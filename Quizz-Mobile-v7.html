@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#0e7490" />
+  <title>PDF Study Quiz Generator</title>
+  <style>
+    :root {
+      --bg: #eef2f6; --card: #fff; --ink: #0f172a; --muted: #64748b; --line: #e2e8f0;
+      --brand: #0e7490; --brand-dark: #155e75; --ok: #15803d; --ok-bg: #dcfce7;
+      --bad: #b91c1c; --bad-bg: #fee2e2; --accent: #7c3aed;
+      --shadow: 0 10px 30px rgba(15, 23, 42, .08); --radius: 16px;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bot: env(safe-area-inset-bottom, 0px);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--ink); min-height: 100vh; min-height: 100dvh;
+      background: radial-gradient(1200px 500px at 10% -10%, #cffafe 0%, transparent 50%),
+                  radial-gradient(900px 400px at 100% 0%, #ede9fe 0%, transparent 45%), var(--bg);
+      padding-bottom: calc(12px + var(--safe-bot));
+    }
+    header { max-width: 960px; margin: 0 auto; padding: calc(20px + var(--safe-top)) 16px 8px; }
+    header h1 { margin: 0; font-size: 1.4rem; letter-spacing: -.03em; }
+    header p { margin: 8px 0 0; color: var(--muted); line-height: 1.4; }
+    main { max-width: 960px; margin: 0 auto; padding: 12px 16px 32px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; }
+    .hidden { display: none !important; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .tab { border: 1px solid var(--line); background: #f8fafc; border-radius: 999px; padding: 10px 14px; font-weight: 650; cursor: pointer; font-size: .9rem; min-height: 44px; white-space: nowrap; }
+    .tab.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+    button, .file-btn { appearance: none; border: 0; border-radius: 12px; padding: 12px 16px; font-weight: 700; font-size: 1rem; cursor: pointer; min-height: 48px; }
+    .primary { background: var(--brand); color: #fff; }
+    .primary:active { background: var(--brand-dark); }
+    .ghost { background: #f8fafc; color: var(--ink); border: 1px solid var(--line); }
+    .violet { background: var(--accent); color: #fff; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    textarea, input[type="text"], input[type="number"], select {
+      width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+      font: inherit; color: inherit; font-size: 16px !important; max-width: 100%;
+    }
+    textarea { min-height: 140px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px !important; }
+    .hint { color: var(--muted); font-size: .9rem; margin: 8px 0 0; line-height: 1.4; }
+    .status { margin-top: 12px; color: var(--muted); line-height: 1.4; word-break: break-word; }
+    .error { color: var(--bad); }
+    .engine { font-size: .78rem; color: var(--muted); margin-top: 6px; word-break: break-word; }
+    .drop { position: relative; border: 2px dashed #cbd5e1; border-radius: 14px; padding: 28px 16px; text-align: center; background: #f8fafc; margin-bottom: 14px; overflow: hidden; min-height: 140px; }
+    .drop.busy { opacity: .7; }
+    .drop input[type="file"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+    .drop strong { pointer-events: none; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+    label.field { display: grid; gap: 6px; font-size: .85rem; font-weight: 650; color: var(--muted); }
+    .q-editor { display: grid; gap: 10px; margin-top: 16px; max-height: 40vh; overflow: auto; -webkit-overflow-scrolling: touch; }
+    .q-mini { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: #f8fafc; }
+    .q-mini b { font-size: .8rem; color: var(--brand-dark); }
+    .progress-meta { display: flex; justify-content: space-between; font-size: .9rem; color: var(--muted); margin-bottom: 8px; gap: 8px; }
+    .bar { height: 8px; background: #e2e8f0; border-radius: 99px; overflow: hidden; margin-bottom: 16px; }
+    .bar > span { display: block; height: 100%; background: var(--brand); width: 0; transition: width .25s ease; }
+    .q-text { font-size: 1.08rem; line-height: 1.5; margin: 0 0 8px; }
+    .badge { display: inline-block; font-size: .75rem; font-weight: 700; padding: 4px 8px; border-radius: 999px; background: #ecfeff; color: var(--brand-dark); margin-bottom: 12px; }
+    .options { display: grid; gap: 10px; margin: 16px 0 20px; }
+    .opt { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--line); border-radius: 12px; padding: 14px; cursor: pointer; background: #f8fafc; min-height: 52px; }
+    .opt:active { border-color: #a5f3fc; background: #f0fdfa; }
+    .opt input { margin-top: 4px; width: 22px; height: 22px; flex: 0 0 auto; accent-color: var(--brand); }
+    .opt.correct { background: var(--ok-bg); border-color: #86efac; }
+    .opt.wrong { background: var(--bad-bg); border-color: #fca5a5; }
+    .opt.missed { background: #ecfeff; border-color: #67e8f9; }
+    .opt.locked { cursor: default; }
+    .letter { flex: 0 0 26px; height: 26px; border-radius: 8px; background: #e2e8f0; display: grid; place-items: center; font-weight: 800; font-size: .8rem; }
+    .feedback { border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-weight: 650; }
+    .feedback.ok { background: var(--ok-bg); color: var(--ok); }
+    .feedback.bad { background: var(--bad-bg); color: var(--bad); }
+    .explain { font-weight: 500; color: var(--ink); margin-top: 6px; }
+    .score-hero { text-align: center; padding: 12px 0 8px; }
+    .score-hero .pct { font-size: 2.6rem; font-weight: 800; letter-spacing: -.04em; }
+    .review { margin-top: 20px; display: grid; gap: 12px; }
+    .review-item { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: #f8fafc; }
+    .review-item h3 { margin: 0 0 8px; font-size: .95rem; }
+    .tag.ok { color: var(--ok); } .tag.bad { color: var(--bad); }
+    details { margin-top: 12px; }
+    summary { cursor: pointer; color: var(--brand-dark); font-weight: 650; padding: 8px 0; min-height: 44px; }
+    .warn { background: #fff7ed; border-left: 4px solid #f97316; padding: 10px 12px; border-radius: 8px; font-size: .88rem; color: #9a3412; margin-top: 12px; }
+    .sticky-actions { position: sticky; bottom: 0; z-index: 5; padding: 12px 0 max(8px, var(--safe-bot)); background: linear-gradient(to bottom, rgba(255,255,255,0), #fff 28%); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>PDF Study Quiz Generator</h1>
+    <p>Works fully without waiting on any network call. The PDF reader loads only when you pick a file.</p>
+  </header>
+  <main>
+    <section id="screen-load" class="card">
+      <div class="tabs">
+        <button class="tab on" id="tab-gen" type="button">Generate from content</button>
+        <button class="tab" id="tab-parse" type="button">Parse existing quiz</button>
+      </div>
+
+      <div class="drop" id="dropzone">
+        <input id="file" type="file" accept="application/pdf,.pdf,application/x-pdf" />
+        <strong id="drop-title">Tap to choose a PDF</strong>
+        <div class="hint" id="drop-hint">iPhone: tap here, then Browse / Files.</div>
+      </div>
+      <div class="row">
+        <button class="ghost" id="btn-any" type="button">Browse any file</button>
+        <input id="file-any" type="file" class="hidden" />
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <button class="ghost" id="btn-sample" type="button">Load sample handout</button>
+        <button class="primary" id="btn-generate" type="button" disabled>Generate questions</button>
+        <button class="violet hidden" id="btn-start" type="button">Start quiz</button>
+      </div>
+      <p class="status" id="load-status">No content loaded yet — try Load sample handout, paste text below, or pick a PDF.</p>
+      <p class="engine" id="engine-status">PDF engine: will load automatically when needed.</p>
+      <div class="bar hidden" id="parse-bar-wrap"><span id="parse-bar"></span></div>
+
+      <div id="gen-settings" class="grid2" style="margin-top:16px">
+        <label class="field">Questions to generate
+          <input id="num-q" type="number" min="4" max="40" value="12" inputmode="numeric" />
+        </label>
+        <label class="field">Include multi-choice (choose 2 / 3)
+          <select id="mix-multi">
+            <option value="yes" selected>Yes — mix single and multi</option>
+            <option value="no">Single choice only</option>
+          </select>
+        </label>
+      </div>
+
+      <details id="text-details">
+        <summary>Extracted / pasted text</summary>
+        <textarea id="paste" placeholder="PDF text appears here after you pick a file. You can also paste."></textarea>
+        <div class="row" style="margin-top:10px">
+          <button class="ghost" id="btn-ai-copy" type="button">Copy AI prompt</button>
+          <button class="ghost" id="btn-ai-import" type="button">Import AI JSON</button>
+        </div>
+        <p class="hint">If the PDF is a scan (images only) or the reader can't load on your network, paste the text here instead — everything else still works.</p>
+        <textarea id="ai-json" class="hidden" placeholder='{"questions":[...]}'></textarea>
+      </details>
+      <div class="q-editor hidden" id="q-editor"></div>
+      <div class="warn">Study / practice tool only. Generated questions come from the PDF text.</div>
+    </section>
+
+    <section id="screen-quiz" class="card hidden">
+      <div class="progress-meta">
+        <span id="q-pos">Question 1 of 1</span>
+        <span id="q-score">Score 0 / 0</span>
+      </div>
+      <div class="bar"><span id="q-bar"></span></div>
+      <div class="badge" id="q-type">Single choice</div>
+      <p class="q-text" id="q-text"></p>
+      <p class="hint" id="q-hint"></p>
+      <div class="options" id="q-options"></div>
+      <div id="q-feedback" class="hidden"></div>
+      <div class="row sticky-actions">
+        <button class="primary" id="btn-submit" type="button">Submit answer</button>
+        <button class="ghost hidden" id="btn-next" type="button">Next question</button>
+      </div>
+    </section>
+
+    <section id="screen-results" class="card hidden">
+      <div class="score-hero">
+        <div class="pct" id="res-pct">0%</div>
+        <p id="res-summary">You scored 0 of 0</p>
+      </div>
+      <div class="row" style="justify-content:center">
+        <button class="primary" id="btn-retry" type="button">Retry quiz</button>
+        <button class="ghost" id="btn-new" type="button">Load another PDF</button>
+      </div>
+      <div class="review" id="res-review"></div>
+    </section>
+  </main>
+
+<script>
+const PDF_CDNS = [
+  { lib: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js",
+    worker: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js",
+    cMap: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/",
+    fonts: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/" },
+  { lib: "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js",
+    worker: "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js",
+    cMap: "https://unpkg.com/pdfjs-dist@3.11.174/cmaps/",
+    fonts: "https://unpkg.com/pdfjs-dist@3.11.174/standard_fonts/" },
+  { lib: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
+    worker: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js",
+    cMap: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/",
+    fonts: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/" }
+];
+
+const SAMPLE_CONTENT = `MT5 EXPERT ADVISOR
+Input Settings & Dashboard — Clients Handout
+3X Combo v7 — Logic, Risk Management & Interface Guide
+For educational use with students — not financial advice
+
+1. Trailing Check & Hybrid Anti-Slippage Engine
+TrailingCheckMs = 1
+Sets how often (in milliseconds) the robot re-checks the trailing stop logic. A value of 1 means it checks almost continuously — very frequent, tick-by-tick style monitoring. Lower = more responsive, but more CPU/processing load.
+
+Hybrid Anti-Slippage Engine
+This is a bundle of protective features aimed at reducing the damage caused by slippage — when the price actually filled differs from the price expected, especially during fast market moves or low liquidity.
+
+EnableHybridAntiSlippage: Turns the whole slippage-protection system on. Hybrid implies it combines more than one method (e.g. price tolerance + retry logic + spread filtering) rather than relying on just one technique.
+Smart Early-Exit Guard: A safeguard that tries to exit a trade before a bigger loss develops, based on early warning signs (like a sudden reversal or spread spike) rather than waiting for the stop-loss to be hit.
+Continuous Peak Trailing: Instead of trailing the stop-loss in fixed steps, it continuously updates the stop level based on the highest (peak) price reached, locking in profit more smoothly as price moves favorably.
+SL-Fail Backup Guard: A backup mechanism in case the normal stop-loss fails to execute (this can happen due to broker rejection, connection issues, or extreme volatility). Acts as a second line of defense so the trade doesn't stay unprotected.
+DuplicateTrade: Controls whether the EA allows more than one trade to be opened at the same price zone (relevant when multiple signal sources — such as multi-timeframe analysis — point to the same entry).
+
+TEACHING POINT: Robust EAs build in redundancy (backup guards), adaptive protection (hybrid systems), and speed (frequent checks) because live markets are messier than backtests.
+
+2. Account Dashboard & Celebration Settings
+These settings don't change how the EA trades; they only change how information is displayed.
+Landscape Panel Width (pixels): Fixed width of the on-chart dashboard panel in landscape orientation. Default: 460 pixels.
+Portrait Panel Width (pixels): Fixed width of the on-chart dashboard panel in portrait orientation. Default: 480 pixels.
+Run dashboard + PROFIT BOOKED celebration: Master toggle for whether the full-screen PROFIT BOOKED celebration overlay is allowed to appear at all when a trade closes in profit.
+PROFIT BOOKED Celebration Duration: How many seconds the celebration overlay stays visible. Default: 5 seconds.
+Celebration Motion Speed: Controls how fast the celebration animation moves. Default speed reference: 5.
+Master switch: A separate master switch that turns off the entire visual panel/celebration system. This is independent from the 3X Combo v7 = ENABLE chart button, which controls trading — this one controls the display layer only.
+
+NOTE: The Master switch here only affects the visual dashboard/celebration layer. It is not the same as the 3X Combo v7 = ENABLE button on the chart, which is the actual trading on/off switch.
+
+3. The Live Performance Dashboard
+Balance vs Equity: Balance = account value with no open trades. Equity = balance plus floating (unrealized) profit/loss. They match only when no trade is open.
+Floating P/L: Real-time profit or loss on trades that are still running.
+DD (Drawdown): How far the account has fallen from its recent peak, shown in % and dollars. The single most important risk indicator on the panel.
+Today / Yesterday / Last Week / This Month: Quick performance timeline without digging through trade history.
+Lifetime Profit: Cumulative profit since the EA started running on this account.
+Win Rate: Percentage of trades that closed in profit.
+Profit Trades / Loss Trades: Raw counts of winning vs losing trades.
+Profit Factor: Gross profit divided by gross loss. Above 1.0 = net profitable. E.g. 2.08 means roughly $2 earned for every $1 lost.
+Spread Monitor: Live spread per symbol. High spread raises trading cost and can pause entries on some EAs.
+Per-Symbol Breakdown: Trades, win rate, P/L and lot size split by instrument.
+Balance Growth Graph: A live equity curve that redraws automatically as trades close in profit or loss.
+
+IMPORTANT: Drawdown (DD) is the number to watch most closely. A high win rate can still hide a strategy that occasionally takes very large losses — always check DD alongside profit factor.
+
+The Celebration Screen
+When a trade closes in profit, a full-screen overlay appears. This is behavioral design, not just decoration:
+Trust-building — a clean, data-rich panel makes the system look transparent and professional.
+Positive reinforcement — each win triggers a small reward response.
+Perceived control — live stats create a feeling of transparency.
+Client demonstrations — many trading houses log in using an investor password (read-only access), leave the robot itself disabled, and simply display the dashboard.
+
+TEACHING POINT: Judge the EA by its raw statistics (win rate, profit factor, drawdown, verified trade history) — not by how exciting the dashboard is. The visual layer exists to keep people engaged; it proves nothing about long-term edge.
+
+The Enable / Disable Button
+The 3X Combo v7 = ENABLE button at the top of the chart is a master on/off switch:
+Click to disable → immediately cancels all pending orders placed by the EA. Already-open trades are left running and still managed by their stop-loss/take-profit.
+Click to re-enable → the EA resumes and automatically begins placing new pending orders again.
+This is a manual override useful during high-impact news events, holidays, or any time a trader wants to pause new entries without removing the EA from the chart.
+
+4. GMT Offset & the Weekly Trading Cycle
+GMTOffset tells the EA which time zone the broker's server uses, so session-based logic fires at the correct real time.
+GMT+3 → used during summer / daylight saving time
+GMT+2 → used during winter
+Because brokers shift server time twice a year, this setting must be updated seasonally or session-based logic will fire at the wrong moment.
+
+Weekly Cycle Logic
+1 hour before market close (Friday) → all pending orders are automatically cancelled, so nothing is left exposed to weekend gap risk.
+Monday at market open → the EA runs a full fresh market analysis on the selected pairs (starting from the GMT offset time) before placing any new pending orders, rather than reusing stale Friday price levels.
+
+GOOD PRACTICE: This avoids holding weekend-exposed pending orders that can be blown out by a large Monday gap.
+
+5. Auto Risk Management
+AutoRiskManagement = false
+Manual mode. The trader sets a fixed lot size themselves, and it never changes regardless of balance.
+AutoRiskManagement = true
+The EA automatically scales lot size in proportion to account balance, based on the selected risk tier. As the balance grows, lot size grows with it — auto-compounding.
+
+No Risk: 0.01 lot per $200
+Low Risk: 0.01 lot per $100
+Medium Risk: 0.02 lot per $100
+Aggressive Risk: 0.03 lot per $100
+Higher risk tiers mean larger lot size relative to balance — bigger position size, and bigger swings in both directions (profit and drawdown).
+
+6. Flipping Money (Multi-Timeframe Combo)
+Default timeframes (FlippingMoney = false): XAUUSD → M15, BTCUSD → M15, NASDAQ → M30. Each pair trades on a single timeframe only.
+FlippingMoney = true activates multi-timeframe trading.
+Flipping Dual: M15 + M30 on every pair. Two independent signal sources per pair — more trades.
+Flipping Triple: M15 + M30 + H1 on every pair. Three independent signal sources per pair — most trades, most confluence opportunity.
+More timeframes analyzing the market independently means more signals — which can mean more profit opportunities, but also more potential losing trades.
+
+Confluence Zones
+When M15, M30, and H1 all independently identify a buy or sell zone at the same price, that price becomes a technically stronger zone.
+
+IMPORTANT: If running Flipping Dual or Flipping Triple, always pair it with the No Risk management tier. Because lot size stays smallest, even a multi-trade stop-loss hit stays limited to a small loss. Using higher risk tiers together with multi-timeframe flipping multiplies exposure significantly.
+
+Duplicate Order / DuplicateTrade Setting
+Duplicate Order = false → if multiple timeframes generate a pending order at the exact same price, only one entry is taken. No stacking.
+Duplicate Order = true → allows multiple entries at the same price zone across timeframes, amplifying both the upside and the downside.
+
+7. Per-Symbol Basic Settings (XAUUSD / BTCUSD / NASDAQ)
+[Symbol] Enabled: true = the EA is allowed to trade this symbol. false = the EA will not take any trades on this symbol at all.
+[Symbol] Max Spread (Pips): The maximum spread the EA will tolerate before placing a pending order. If set lower than the real spread, the EA will refuse to open trades. Always confirm the live spread on the 3X Combo dashboard's Spread Monitor before setting this value.
+[Symbol] Max Slippage (Pips): How much price difference the EA will accept between expected and actual fill price. Too tight a value can cause orders to be rejected during fast market movement.
+[Symbol] Lot: The fixed lot size used for this symbol when Auto Risk Management is turned off. If Auto Risk Management is true, this manual value is overridden by automatic balance-based lot sizing.
+[Symbol] Manual Symbol: Left empty by default (auto-detected). If the EA still won't trade, the broker likely uses a different symbol name (a suffix or prefix).
+
+Quick Troubleshooting Order — If a Symbol Isn't Trading
+Check that [Symbol] Enabled is set to true.
+Open the 3X Combo dashboard and check the live spread for that symbol.
+Make sure Max Spread and Max Slippage are set equal to or slightly above that live spread — never below it.
+If everything above looks correct and it's still not trading, check the broker's exact symbol name for a suffix/prefix difference, and enter it manually in Manual Symbol.
+
+8. Realistic Expectations — A Note for Clients
+Sustained monthly returns of 30–50% (low risk) or 50–100% (medium risk) are not realistic to expect repeatedly, even from a well-built system. Elite professional funds typically target 15–30% annually, not monthly.
+Short-term or backtested performance is not the same as a guaranteed forward rate.
+If students expect very high returns and then experience a normal drawdown, it can feel like the system has failed rather than being normal variance.
+
+TEACHING POINT: The most valuable thing to teach is how to read win rate, profit factor, and drawdown honestly. Realistic expectations protect students far more than exciting percentage promises.`;
+
+const SAMPLE_QUIZ = `Question 1
+Which two statements are correct about the default behavior on SRX Series devices?
+(Choose two.)
+• A. The SRX Series device is in flow mode.
+• B. The SRX Series device supports stateless firewall filters.
+• C. The SRX Series device is in packet mode.
+• D. The SRX Series device does not support stateless firewall filters.
+Correct Answers: A, B
+Question 2
+What are two distinctions of a Junos control plane? (Choose two.)
+• A. Implemented on the PFE
+• B. Implemented on the RE
+• C. Session setup
+• D. Responsible for kernel processes
+Correct Answers: B, D
+Question 3
+Which statement is correct about packet mode processing?
+• A. Packet mode bypasses the flow module.
+• B. Packet mode is the basis for stateful processing.
+• C. Packet mode works with NAT, VPNs, UTM, IDP, and other advanced security services.
+• D. Packet mode enables session-based processing of incoming packets.
+Correct Answer: A`;
+
+const LETTERS = "ABCDEFGH".split("");
+const $ = (id) => document.getElementById(id);
+const els = {
+  load: $("screen-load"), quiz: $("screen-quiz"), results: $("screen-results"),
+  file: $("file"), fileAny: $("file-any"), dropzone: $("dropzone"),
+  dropTitle: $("drop-title"),
+  paste: $("paste"), status: $("load-status"), engine: $("engine-status"),
+  generate: $("btn-generate"), start: $("btn-start"), sample: $("btn-sample"),
+  tabGen: $("tab-gen"), tabParse: $("tab-parse"), editor: $("q-editor"),
+  numQ: $("num-q"), mixMulti: $("mix-multi"),
+  aiCopy: $("btn-ai-copy"), aiImport: $("btn-ai-import"), aiJson: $("ai-json"),
+  parseBarWrap: $("parse-bar-wrap"), parseBar: $("parse-bar"),
+  textDetails: $("text-details"), btnAny: $("btn-any"),
+  qPos: $("q-pos"), qScore: $("q-score"), qBar: $("q-bar"),
+  qType: $("q-type"), qText: $("q-text"), qHint: $("q-hint"),
+  qOptions: $("q-options"), qFeedback: $("q-feedback"),
+  submit: $("btn-submit"), next: $("btn-next"),
+  resPct: $("res-pct"), resSummary: $("res-summary"), resReview: $("res-review"),
+  retry: $("btn-retry"), neu: $("btn-new")
+};
+
+let mode = "generate";
+let sourceText = "";
+let questions = [];
+let index = 0;
+let answers = [];
+let graded = false;
+let parsing = false;
+let pdfEngineReady = false;
+let pdfEngineCdn = null;
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+function uniq(arr) { return [...new Set(arr)]; }
+function wordToCount(word) {
+  const w = String(word).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const map = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, all: Infinity };
+  if (map[w] != null) return map[w];
+  const n = parseInt(w, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+function setStatus(msg, isError) {
+  els.status.textContent = msg;
+  els.status.className = "status" + (isError ? " error" : "");
+}
+function show(screen) {
+  els.load.classList.toggle("hidden", screen !== "load");
+  els.quiz.classList.toggle("hidden", screen !== "quiz");
+  els.results.classList.toggle("hidden", screen !== "results");
+  window.scrollTo(0, 0);
+}
+function yieldToUI() { return new Promise(r => setTimeout(r, 0)); }
+
+function withTimeout(promise, ms, msg) {
+  let t;
+  const timeout = new Promise((_, rej) => { t = setTimeout(() => rej(new Error(msg || "Timed out")), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
+}
+function loadScript(src, ms) {
+  return withTimeout(new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src; s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Script failed to load: " + src));
+    document.head.appendChild(s);
+  }), ms || 9000, "Timed out loading library from " + src);
+}
+async function tryBlobWorker(url, ms) {
+  const res = await withTimeout(fetch(url, { mode: "cors" }), ms || 8000, "Timed out fetching worker");
+  if (!res.ok) throw new Error("Worker HTTP " + res.status);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+function quickWorkerTest(ms) {
+  return withTimeout(new Promise((resolve, reject) => {
+    try {
+      const worker = new pdfjsLib.PDFWorker({ name: "warmup-" + Date.now() });
+      worker.promise.then(() => { worker.destroy(); resolve(); }).catch(reject);
+    } catch (e) { reject(e); }
+  }), ms || 8000, "PDF worker did not respond in time");
+}
+
+async function ensurePdfEngine(onStatus) {
+  if (pdfEngineReady && window.pdfjsLib) return;
+  let lastErr = null;
+  for (const cdn of PDF_CDNS) {
+    try {
+      onStatus("Loading PDF engine (" + cdn.lib.split("/")[2] + ")…");
+      if (!window.pdfjsLib || pdfEngineCdn !== cdn.lib) {
+        await loadScript(cdn.lib, 9000);
+      }
+      if (!window.pdfjsLib) throw new Error("Library loaded but pdfjsLib is undefined");
+      pdfjsLib.GlobalWorkerOptions.workerSrc = cdn.worker;
+      onStatus("Starting PDF worker…");
+      await quickWorkerTest(8000);
+      pdfEngineReady = true; pdfEngineCdn = cdn.lib; window.__pdfCdn = cdn;
+      onStatus("PDF engine ready.");
+      return;
+    } catch (directErr) {
+      lastErr = directErr;
+      try {
+        onStatus("Retrying with compatibility mode…");
+        const blobUrl = await tryBlobWorker(cdn.worker, 8000);
+        pdfjsLib.GlobalWorkerOptions.workerSrc = blobUrl;
+        await quickWorkerTest(8000);
+        pdfEngineReady = true; pdfEngineCdn = cdn.lib; window.__pdfCdn = cdn;
+        onStatus("PDF engine ready (compatibility mode).");
+        return;
+      } catch (blobErr) {
+        lastErr = blobErr;
+        console.warn("CDN failed", cdn.lib, directErr, blobErr);
+      }
+    }
+  }
+  throw new Error("Could not start the PDF reader on this browser/network (" + (lastErr ? lastErr.message : "unknown error") + "). Paste the PDF text instead using the box below.");
+}
+
+function readFileAsArrayBuffer(file) {
+  if (file.arrayBuffer) return file.arrayBuffer().catch(() => readViaFileReader(file));
+  return readViaFileReader(file);
+}
+function readViaFileReader(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error || new Error("FileReader failed"));
+    r.readAsArrayBuffer(file);
+  });
+}
+function itemsToText(items) {
+  const rows = items.map(it => {
+    const t = it.transform || [1, 0, 0, 1, 0, 0];
+    return { str: it.str || "", x: t[4], y: t[5], h: it.height || 0, eol: !!it.hasEOL };
+  }).filter(it => it.str);
+  rows.sort((a, b) => { const dy = b.y - a.y; if (Math.abs(dy) > 3.5) return dy; return a.x - b.x; });
+  const lines = []; let cur = []; let lastY = null;
+  for (const it of rows) {
+    if (lastY !== null && Math.abs(lastY - it.y) > Math.max(4, it.h * 0.6)) {
+      lines.push(cur.join(" ").replace(/\s+/g, " ").trim()); cur = [];
+    } else if (cur.length && !cur[cur.length - 1].endsWith(" ") && !it.str.startsWith(" ")) {
+      cur.push(" ");
+    }
+    cur.push(it.str); lastY = it.y;
+    if (it.eol) { lines.push(cur.join("").replace(/\s+/g, " ").trim()); cur = []; lastY = null; }
+  }
+  if (cur.length) lines.push(cur.join("").replace(/\s+/g, " ").trim());
+  return lines.filter(Boolean).join("\n");
+}
+function normalizeExtracted(text) {
+  return String(text).replace(/\u00a0/g, " ").replace(/\u2022/g, "•").replace(/\r/g, "")
+    .replace(/(\w)-\n(\w)/g, "$1$2").replace(/[ \t]+\n/g, "\n").replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n").trim();
+}
+async function extractPdfText(file, onProgress) {
+  const buf = await readFileAsArrayBuffer(file);
+  const data = new Uint8Array(buf).slice();
+  const cdn = window.__pdfCdn || PDF_CDNS[0];
+  const task = pdfjsLib.getDocument({
+    data, cMapUrl: cdn.cMap, cMapPacked: true, standardFontDataUrl: cdn.fonts,
+    disableAutoFetch: true, disableStream: true, disableRange: true,
+    isEvalSupported: false, useSystemFonts: true, verbosity: 0
+  });
+  const pdf = await withTimeout(task.promise, 45000, "Timed out opening PDF (large file or slow connection). Try a smaller file or paste text.");
+  let text = "";
+  for (let i = 1; i <= pdf.numPages; i++) {
+    if (onProgress) onProgress(i, pdf.numPages);
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent({ normalizeWhitespace: true, disableCombineTextItems: false });
+    text += itemsToText(content.items) + "\n\n";
+    if (page.cleanup) page.cleanup();
+    await yieldToUI();
+  }
+  if (pdf.cleanup) pdf.cleanup();
+  if (pdf.destroy) await pdf.destroy();
+  return normalizeExtracted(text);
+}
+
+function detectExpectedCount(text) {
+  const t = String(text);
+  if (/\bselect\s+all\s+that\s+apply\b/i.test(t) || /\bchoose\s+all\b/i.test(t)) return Infinity;
+  const patterns = [
+    /\(\s*Choose\s+([^)]+)\)/i, /\bChoose\s+(one|two|three|four|five|six|all|\d+)\b/i,
+    /\bSelect\s+(one|two|three|four|five|six|all|\d+)\b/i, /\bWhich\s+(two|three|four|five|six|\d+)\b/i,
+    /\bWhat\s+are\s+(two|three|four|five|six|\d+)\b/i
+  ];
+  for (const re of patterns) { const m = t.match(re); if (m) { const n = wordToCount(m[1]); if (n) return n; } }
+  return null;
+}
+function parseQuestionBlock(num, body) {
+  let correct = [];
+  const ansMatch = body.match(/Correct Answers?:\s*([^\n]+)/i);
+  if (ansMatch) {
+    correct = uniq(ansMatch[1].toUpperCase().match(/\b([A-E])\b/g) || ansMatch[1].toUpperCase().match(/[A-E]/g) || []);
+    body = body.replace(ansMatch[0], "\n");
+  }
+  const optRe = /(?:^|\n)\s*(?:[•●○◦·▪▫\-]\s*)?([A-E])(?:[\.\)\:])\s+/g;
+  const starts = []; let m;
+  while ((m = optRe.exec(body)) !== null) starts.push({ letter: m[1].toUpperCase(), matchStart: m.index, textStart: m.index + m[0].length });
+  if (starts.length < 2) return null;
+  const questionText = body.slice(0, starts[0].matchStart).replace(/\s+/g, " ").trim();
+  const options = starts.map((s, i) => ({ letter: s.letter, text: body.slice(s.textStart, i + 1 < starts.length ? starts[i + 1].matchStart : body.length).replace(/\s+/g, " ").trim() }));
+  let expectedCount = detectExpectedCount(questionText) || detectExpectedCount(body);
+  if (!expectedCount && correct.length > 1) expectedCount = correct.length;
+  if (!expectedCount) expectedCount = 1;
+  return { id: num, text: questionText || `Question ${num}`, options, correct, isMulti: expectedCount > 1 || expectedCount === Infinity, expectedCount, explanation: "" };
+}
+function parseQuizText(raw) {
+  const text = String(raw).replace(/\r\n/g, "\n");
+  const splitRe = /(?:^|\n)\s*Question\s+(\d+)\s*(?:\n|$)/gi;
+  const marks = []; let m;
+  while ((m = splitRe.exec(text)) !== null) marks.push({ num: m[1], end: m.index + m[0].length, start: m.index });
+  const out = [];
+  for (let i = 0; i < marks.length; i++) {
+    const q = parseQuestionBlock(marks[i].num, text.slice(marks[i].end, i + 1 < marks.length ? marks[i + 1].start : text.length));
+    if (q) out.push(q);
+  }
+  return out;
+}
+function relabel(options, correctTexts) {
+  const labeled = shuffle(options).map((t, i) => ({ letter: LETTERS[i], text: t }));
+  const correct = labeled.filter(o => correctTexts.includes(o.text)).map(o => o.letter);
+  return { options: labeled, correct };
+}
+function pickDistractors(correct, pool, n) { return shuffle(uniq(pool.filter(x => x && x !== correct))).slice(0, n); }
+function makeQuestion(text, optionTexts, correctTexts, explanation, wantMulti) {
+  const correctSet = uniq(correctTexts);
+  let opts = uniq(optionTexts.concat(correctSet)).filter(Boolean);
+  if (opts.length < 3) return null;
+  if (opts.length > 5) {
+    const extra = opts.filter(o => !correctSet.includes(o));
+    opts = uniq(correctSet.concat(pickDistractors(null, extra, Math.max(1, 4 - correctSet.length)))).slice(0, 5);
+  }
+  if (opts.length < 3 || correctSet.some(c => !opts.includes(c))) return null;
+  const { options, correct } = relabel(opts, correctSet);
+  if (!correct.length) return null;
+  const isMulti = wantMulti || correct.length > 1;
+  const expectedCount = isMulti ? correct.length : 1;
+  let qtext = text;
+  if (isMulti && !/\bchoose\b/i.test(qtext)) {
+    const word = expectedCount === 3 ? "three" : expectedCount === 2 ? "two" : expectedCount;
+    qtext = qtext.replace(/\?\s*$/, "") + ` (Choose ${word}.)`;
+  }
+  return { text: qtext, options, correct, isMulti, expectedCount, explanation: explanation || "" };
+}
+function extractColonFacts(text) {
+  const facts = [];
+  for (const line of text.split(/\n/).map(l => l.trim()).filter(Boolean)) {
+    const m = line.match(/^(.{3,80}?)\s*[:—–-]\s+(.{20,400})$/);
+    if (m && !/https?:\/\//i.test(line)) facts.push({ term: m[1].replace(/^[•\-]\s*/, "").trim(), def: m[2].trim() });
+  }
+  const para = text.match(/([A-Za-z][A-Za-z0-9 _/+()%]{2,70})\s*=\s*([^\n.]{1,80})/g) || [];
+  for (const p of para) { const m = p.match(/^(.+?)\s*=\s*(.+)$/); if (m) facts.push({ term: m[1].trim(), def: m[2].trim() }); }
+  return facts.filter(f => f.term.length > 2 && f.def.length > 2);
+}
+function extractLists(text) {
+  const lines = text.split(/\n/); const lists = []; let heading = "this topic"; let buf = [];
+  const flush = () => { if (buf.length >= 3) lists.push({ heading, items: buf.slice() }); buf = []; };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) { flush(); continue; }
+    if (/^[•●\-]\s+/.test(line) || (/→/.test(line) && line.length < 220)) {
+      const item = line.replace(/^[•●○◦·▪▫\-]\s*/, "").trim();
+      if (item.length > 12) buf.push(item);
+    } else if (/^\d+\.\s+/.test(line) && line.length < 180) { flush(); heading = line.replace(/^\d+\.\s+/, ""); }
+    else if (line.length < 90 && !/[.]$/.test(line)) { flush(); heading = line.replace(/[:.]$/, ""); }
+    else flush();
+  }
+  flush();
+  return lists;
+}
+function extractRiskRows(text) {
+  const rows = []; const re = /(No Risk|Low Risk|Medium Risk|Aggressive Risk)\s*[:.]?\s*(0\.\d+)\s*lot\s*(?:per\s*\$(\d+))?/gi; let m;
+  while ((m = re.exec(text))) rows.push({ level: m[1], lot: m[2], per: m[3] || "" });
+  return rows;
+}
+function extractDefaults(text) {
+  const out = []; const re = /(.{8,80}?)(?:\.|\n|\s)Default(?: speed reference)?:\s*([^.\n]+)/gi; let m;
+  while ((m = re.exec(text))) out.push({ term: m[1].replace(/^[\s•\-]+/, "").trim(), value: m[2].trim() });
+  return out;
+}
+function generateFromContent(raw, limit, allowMulti) {
+  const text = String(raw).replace(/\r/g, "");
+  const facts = extractColonFacts(text), lists = extractLists(text), risks = extractRiskRows(text), defaults = extractDefaults(text);
+  const built = [];
+  for (const f of facts) {
+    const distract = pickDistractors(f.def, facts.map(x => x.def), 3);
+    if (distract.length < 2) continue;
+    built.push(makeQuestion(`What does "${f.term}" do / mean?`, [f.def, ...distract], [f.def], `${f.term}: ${f.def}`, false));
+    const terms = pickDistractors(f.term, facts.map(x => x.term), 3);
+    if (terms.length >= 2 && f.def.length < 180) built.push(makeQuestion(`Which setting or field matches this description: "${f.def}"`, [f.term, ...terms], [f.term], `${f.term}: ${f.def}`, false));
+  }
+  for (const d of defaults) {
+    const vals = pickDistractors(d.value, defaults.map(x => x.value).concat(["1", "5 seconds", "460 pixels", "480 pixels", "10 seconds"]), 3);
+    if (vals.length >= 2) built.push(makeQuestion(`What is the default mentioned for ${d.term}?`, [d.value, ...vals], [d.value], `${d.term} default is ${d.value}.`, false));
+  }
+  if (risks.length >= 3) for (const r of risks) {
+    const lots = pickDistractors(r.lot + " lot", risks.map(x => x.lot + " lot"), 3);
+    built.push(makeQuestion(`When Auto Risk Management is on, what lot size is used for ${r.level}?`, [r.lot + " lot", ...lots, "0.10 lot"], [r.lot + " lot"], `${r.level} uses ${r.lot} lot` + (r.per ? ` per $${r.per}.` : "."), false));
+  }
+  if (allowMulti) {
+    for (const list of lists) {
+      const items = uniq(list.items).filter(i => i.length > 8 && i.length < 220);
+      if (items.length < 4) continue;
+      const n = items.length >= 6 ? 3 : 2;
+      const correctItems = shuffle(items).slice(0, n);
+      const otherLists = lists.filter(l => l !== list).flatMap(l => l.items);
+      const distract = pickDistractors(null, items.filter(i => !correctItems.includes(i)).concat(otherLists), Math.max(4 - n, 1));
+      const q = makeQuestion(`Which ${n === 3 ? "three" : "two"} statements belong with "${list.heading}"?`, correctItems.concat(distract), correctItems, `From section: ${list.heading}`, true);
+      if (q) built.push(q);
+    }
+    if (facts.length >= 6) {
+      const group = shuffle(facts).slice(0, 2);
+      const distractFacts = pickDistractors(null, facts.filter(f => !group.includes(f)).map(f => f.term), 2);
+      const q = makeQuestion("Which two terms / settings are discussed in this material?", group.map(f => f.term).concat(distractFacts), group.map(f => f.term), group.map(f => f.term).join(" and ") + " both appear in the notes.", true);
+      if (q) built.push(q);
+    }
+  }
+  const teaching = [...text.matchAll(/(?:TEACHING POINT|IMPORTANT|NOTE|GOOD PRACTICE):\s*([^\n]+(?:\n(?![\dA-Z]).*)?)/g)];
+  for (const t of teaching) {
+    const sentence = t[1].replace(/\s+/g, " ").trim().slice(0, 320);
+    if (sentence.length < 40) continue;
+    const others = shuffle(facts.map(f => f.def)).filter(d => d && d !== sentence).slice(0, 3);
+    if (others.length < 2) continue;
+    built.push(makeQuestion("Which statement is supported by the notes?", [sentence, ...others], [sentence], sentence, false));
+  }
+  const unique = []; const seen = new Set();
+  for (const q of shuffle(built.filter(Boolean))) { const key = q.text.slice(0, 80); if (seen.has(key)) continue; seen.add(key); unique.push(q); }
+  const mixed = allowMulti ? unique : unique.filter(q => !q.isMulti);
+  return mixed.slice(0, limit).map((q, i) => ({ ...q, id: String(i + 1) }));
+}
+
+function renderEditor() {
+  if (!questions.length) { els.editor.classList.add("hidden"); return; }
+  els.editor.classList.remove("hidden");
+  els.editor.innerHTML = questions.map((q, i) => `
+    <article class="q-mini">
+      <b>Q${i + 1} · ${q.isMulti ? "Multi (" + q.expectedCount + ")" : "Single"}</b>
+      <div>${escapeHtml(q.text)}</div>
+      <div class="hint">${q.options.map(o => (q.correct.includes(o.letter) ? "✓ " : "") + o.letter + ". " + o.text).map(escapeHtml).join(" · ")}</div>
+    </article>`).join("");
+}
+function loadQuestions(list, sourceLabel) {
+  questions = list.map((q, i) => ({ ...q, id: q.id || String(i + 1) }));
+  answers = []; index = 0; graded = false;
+  els.start.classList.toggle("hidden", !questions.length);
+  els.start.disabled = questions.length === 0;
+  if (!questions.length) { setStatus("Could not build questions from that text. Open Extracted text and check it, or paste notes.", true); renderEditor(); return; }
+  const multi = questions.filter(q => q.isMulti).length;
+  setStatus(`Ready: ${questions.length} question(s) from ${sourceLabel} (${multi} multi-choice checkboxes, ${questions.length - multi} single-choice).`);
+  renderEditor();
+}
+function selectedLetters() { return [...els.qOptions.querySelectorAll("input:checked")].map(i => i.value); }
+function renderQuestion() {
+  const q = questions[index]; graded = false;
+  els.qPos.textContent = `Question ${index + 1} of ${questions.length}`;
+  els.qScore.textContent = `Score ${answers.filter(a => a && a.correct).length} / ${answers.length}`;
+  els.qBar.style.width = `${(index / questions.length) * 100}%`;
+  if (q.isMulti) {
+    els.qType.textContent = `Multiple choice — select ${q.expectedCount === Infinity ? "all that apply" : q.expectedCount}`;
+    els.qHint.textContent = `Use checkboxes. Select exactly ${q.expectedCount} answer${q.expectedCount > 1 ? "s" : ""}.`;
+  } else { els.qType.textContent = "Single choice"; els.qHint.textContent = "Select one answer."; }
+  els.qText.textContent = q.text;
+  els.qFeedback.className = "hidden";
+  els.submit.classList.remove("hidden"); els.next.classList.add("hidden");
+  els.next.textContent = index === questions.length - 1 ? "See results" : "Next question";
+  const type = q.isMulti ? "checkbox" : "radio";
+  els.qOptions.innerHTML = q.options.map(opt => `
+    <label class="opt">
+      <input type="${type}" name="opt" value="${opt.letter}" />
+      <span class="letter">${opt.letter}</span>
+      <span>${escapeHtml(opt.text)}</span>
+    </label>`).join("");
+  els.qOptions.querySelectorAll("input").forEach(input => {
+    input.addEventListener("change", () => {
+      if (!q.isMulti || q.expectedCount === Infinity || graded) return;
+      const checked = [...els.qOptions.querySelectorAll("input")].filter(b => b.checked);
+      if (checked.length > q.expectedCount) input.checked = false;
+    });
+  });
+}
+function gradeCurrent() {
+  const q = questions[index]; const picked = selectedLetters();
+  if (!picked.length) { els.qFeedback.className = "feedback bad"; els.qFeedback.innerHTML = q.isMulti ? "Select the required number of options." : "Select an option."; els.qFeedback.classList.remove("hidden"); return; }
+  if (q.isMulti && q.expectedCount !== Infinity && picked.length !== q.expectedCount) { els.qFeedback.className = "feedback bad"; els.qFeedback.innerHTML = `Select exactly ${q.expectedCount} option(s). You selected ${picked.length}.`; els.qFeedback.classList.remove("hidden"); return; }
+  const ok = q.correct.length ? picked.length === q.correct.length && q.correct.every(c => picked.includes(c)) : false;
+  answers[index] = { picked, correct: ok };
+  [...els.qOptions.querySelectorAll(".opt")].forEach(lab => {
+    const letter = lab.querySelector("input").value;
+    lab.classList.add("locked"); lab.querySelector("input").disabled = true;
+    const isCorrect = q.correct.includes(letter), isPicked = picked.includes(letter);
+    if (isCorrect) lab.classList.add(isPicked ? "correct" : "missed"); else if (isPicked) lab.classList.add("wrong");
+  });
+  const explain = q.explanation ? `<div class="explain">${escapeHtml(q.explanation)}</div>` : "";
+  els.qFeedback.classList.remove("hidden");
+  if (ok) { els.qFeedback.className = "feedback ok"; els.qFeedback.innerHTML = "Correct" + explain; }
+  else { els.qFeedback.className = "feedback bad"; els.qFeedback.innerHTML = `Incorrect. Correct answer${q.correct.length > 1 ? "s" : ""}: ${q.correct.join(", ")}` + explain; }
+  graded = true; els.submit.classList.add("hidden"); els.next.classList.remove("hidden");
+  els.qScore.textContent = `Score ${answers.filter(a => a && a.correct).length} / ${answers.filter(Boolean).length}`;
+  els.qBar.style.width = `${((index + 1) / questions.length) * 100}%`;
+}
+function renderResults() {
+  const total = questions.length, earned = answers.filter(a => a && a.correct).length;
+  const pct = total ? Math.round((earned / total) * 100) : 0;
+  els.resPct.textContent = pct + "%"; els.resPct.style.color = pct >= 70 ? "var(--ok)" : "var(--bad)";
+  els.resSummary.textContent = `You scored ${earned} of ${total}`;
+  els.resReview.innerHTML = questions.map((q, i) => {
+    const rec = answers[i] || { picked: [], correct: false };
+    return `<article class="review-item">
+      <h3>Question ${q.id} <span class="tag ${rec.correct ? "ok" : "bad"}">${rec.correct ? "Correct" : "Incorrect"}</span></h3>
+      <p>${escapeHtml(q.text)}</p>
+      <p class="hint">Your answer: ${rec.picked.join(", ") || "—"} · Correct: ${q.correct.join(", ") || "n/a"}</p>
+      ${q.explanation ? `<p class="hint">${escapeHtml(q.explanation)}</p>` : ""}
+    </article>`;
+  }).join("");
+  show("results");
+}
+function runGenerate() {
+  const text = els.paste.value.trim() || sourceText;
+  if (!text) { setStatus("Load a PDF or paste text first.", true); return; }
+  const n = Math.max(4, Math.min(40, Number(els.numQ.value) || 12));
+  const allowMulti = els.mixMulti.value === "yes";
+  if (mode === "parse") loadQuestions(parseQuizText(text), "parsed quiz");
+  else loadQuestions(generateFromContent(text, n, allowMulti), "generated notes");
+}
+async function handleFile(file) {
+  if (!file || parsing) return;
+  parsing = true;
+  els.dropzone.classList.add("busy");
+  els.parseBarWrap.classList.remove("hidden");
+  els.parseBar.style.width = "5%";
+  els.dropTitle.textContent = file.name;
+  setStatus("Preparing “" + file.name + "”…");
+  try {
+    await ensurePdfEngine((msg) => { setStatus(msg); els.engine.textContent = msg; });
+    setStatus("Reading “" + file.name + "”…");
+    const text = await extractPdfText(file, (page, total) => {
+      els.parseBar.style.width = Math.round((page / total) * 100) + "%";
+      setStatus("Extracting page " + page + " of " + total + "…");
+    });
+    sourceText = text; els.paste.value = text; els.textDetails.open = true;
+    if (!text || text.length < 80) {
+      setStatus("Almost no text came out of this PDF. It may be a scan/image. Paste the notes into Extracted text instead.", true);
+      els.generate.disabled = true;
+    } else {
+      setStatus("Extracted " + text.length.toLocaleString() + " characters from " + file.name + ". Tap Generate questions.");
+      els.generate.disabled = false;
+    }
+  } catch (err) {
+    console.error(err);
+    setStatus((err && err.message) ? err.message : "Could not read that PDF on this browser. Try Browse any file, or paste the text below.", true);
+    els.textDetails.open = true;
+  } finally {
+    parsing = false; els.dropzone.classList.remove("busy"); els.file.value = ""; els.fileAny.value = "";
+  }
+}
+
+els.tabGen.addEventListener("click", () => { mode = "generate"; els.tabGen.classList.add("on"); els.tabParse.classList.remove("on"); els.generate.textContent = "Generate questions"; });
+els.tabParse.addEventListener("click", () => { mode = "parse"; els.tabParse.classList.add("on"); els.tabGen.classList.remove("on"); els.generate.textContent = "Parse quiz questions"; });
+els.file.addEventListener("change", e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+els.fileAny.addEventListener("change", e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+els.btnAny.addEventListener("click", () => els.fileAny.click());
+["dragenter", "dragover"].forEach(ev => els.dropzone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); els.dropzone.style.borderColor = "var(--brand)"; }));
+["dragleave", "drop"].forEach(ev => els.dropzone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); els.dropzone.style.borderColor = ""; }));
+els.dropzone.addEventListener("drop", e => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) handleFile(f); });
+els.sample.addEventListener("click", () => {
+  if (mode === "parse") { els.paste.value = SAMPLE_QUIZ; sourceText = SAMPLE_QUIZ; }
+  else { els.paste.value = SAMPLE_CONTENT; sourceText = SAMPLE_CONTENT; }
+  els.generate.disabled = false; els.textDetails.open = true;
+  setStatus("Sample loaded. Tap " + (mode === "parse" ? "Parse quiz questions." : "Generate questions."));
+});
+els.generate.addEventListener("click", runGenerate);
+els.start.addEventListener("click", () => { if (!questions.length) return; answers = []; index = 0; show("quiz"); renderQuestion(); });
+els.submit.addEventListener("click", gradeCurrent);
+els.next.addEventListener("click", () => { if (!graded) return; if (index >= questions.length - 1) renderResults(); else { index += 1; renderQuestion(); } });
+els.retry.addEventListener("click", () => { answers = []; index = 0; show("quiz"); renderQuestion(); });
+els.neu.addEventListener("click", () => show("load"));
+els.aiCopy.addEventListener("click", async () => {
+  const n = Number(els.numQ.value) || 12;
+  const notes = (els.paste.value || sourceText).slice(0, 14000);
+  const prompt = `Create ${n} multiple-choice study questions from the notes below.
+Mix single-answer and multi-answer items. Multi-answer questions must include "(Choose two.)" or "(Choose three.)".
+Each question needs 4 options A-D. Only use facts present in the notes.
+Return ONLY JSON:
+{"questions":[{"text":"","options":[{"letter":"A","text":""},{"letter":"B","text":""},{"letter":"C","text":""},{"letter":"D","text":""}],"correct":["A"],"isMulti":false,"expectedCount":1,"explanation":""}]}
+NOTES:\n${notes}`;
+  try { await navigator.clipboard.writeText(prompt); setStatus("AI prompt copied. Paste it into ChatGPT/Claude, then use Import AI JSON."); }
+  catch { els.paste.value = prompt; setStatus("Clipboard blocked on this browser — the prompt was placed in the text box."); }
+  els.aiJson.classList.remove("hidden");
+});
+els.aiImport.addEventListener("click", () => {
+  els.aiJson.classList.remove("hidden");
+  const raw = els.aiJson.value.trim();
+  if (!raw) { setStatus("Paste the AI JSON into the extra box first.", true); return; }
+  try {
+    const data = JSON.parse(raw);
+    const list = (data.questions || data).map((q, i) => ({
+      id: String(i + 1), text: q.text, options: q.options, correct: q.correct,
+      isMulti: !!q.isMulti || (q.correct || []).length > 1,
+      expectedCount: q.expectedCount || (q.correct || []).length || 1,
+      explanation: q.explanation || ""
+    }));
+    loadQuestions(list, "AI import");
+  } catch { setStatus("That JSON could not be parsed. Check the paste.", true); }
+});
+els.paste.addEventListener("input", () => { sourceText = els.paste.value; els.generate.disabled = !sourceText.trim(); });
+
+window.addEventListener("error", (e) => { console.error(e.error || e.message); });
+window.addEventListener("unhandledrejection", (e) => { console.error(e.reason); });
+
+// Quiet background pre-warm — never blocks the UI, never shows an overlay.
+ensurePdfEngine((msg) => { els.engine.textContent = msg; })
+  .then(() => { els.engine.textContent = "PDF engine ready — pick a PDF anytime."; })
+  .catch(() => { els.engine.textContent = "PDF engine will retry automatically when you pick a file. You can already use Load sample / Paste text."; });
+</script>
+</body>
+</html>
