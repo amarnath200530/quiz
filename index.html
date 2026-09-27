@@ -55,6 +55,11 @@
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   @media (max-width:720px) { .grid2 { grid-template-columns:1fr; } }
   label.field { display:grid; gap:6px; font-size:.85rem; font-weight:650; color:var(--muted); }
+  .range-inputs { display:flex; align-items:center; gap:8px; }
+  .range-inputs input { width:100%; }
+  .range-sep { color:var(--muted); font-weight:800; flex:0 0 auto; }
+  .switch-row { display:flex; align-items:center; gap:10px; min-height:48px; font-size:.95rem; font-weight:600; color:var(--ink); }
+  .switch-row input { width:22px; height:22px; flex:0 0 auto; accent-color:var(--brand); margin:0; }
   .q-editor { display:grid; gap:10px; margin-top:16px; max-height:38vh; overflow:auto; -webkit-overflow-scrolling:touch; }
   .q-mini { border:1px solid var(--line); border-radius:12px; padding:12px; background:#f8fafc; }
   .q-mini b { font-size:.8rem; color:var(--brand-dark); }
@@ -120,6 +125,25 @@
     <p class="engine" id="engine-status">PDF engine: will load automatically when needed.</p>
     <div class="bar hidden" id="parse-bar-wrap"><span id="parse-bar"></span></div>
 
+    <!-- Parse-mode only: range + shuffle -->
+    <div id="parse-settings" class="grid2" style="margin-top:16px">
+      <label class="field">Question range (optional)
+        <div class="range-inputs">
+          <input id="range-from" type="number" min="1" placeholder="From" inputmode="numeric" />
+          <span class="range-sep">–</span>
+          <input id="range-to" type="number" min="1" placeholder="To" inputmode="numeric" />
+        </div>
+      </label>
+      <label class="field">Order
+        <span class="switch-row">
+          <input id="shuffle-quiz" type="checkbox" />
+          <span>Shuffle question order</span>
+        </span>
+      </label>
+    </div>
+    <p class="hint hidden" id="range-hint"></p>
+
+    <!-- Generate-mode only -->
     <div id="gen-settings" class="grid2 hidden" style="margin-top:16px">
       <label class="field">Questions to generate
         <input id="num-q" type="number" min="4" max="40" value="12" inputmode="numeric" />
@@ -135,7 +159,7 @@
     <details id="text-details">
       <summary>Extracted / pasted text</summary>
       <textarea id="paste" placeholder="PDF text appears here after you pick a file. You can also paste."></textarea>
-      <div class="row hidden" id="ai-row" style="margin-top:10px">
+      <div class="row" id="ai-row" style="margin-top:10px">
         <button class="ghost" id="btn-ai-copy" type="button">Copy AI prompt</button>
         <button class="ghost" id="btn-ai-import" type="button">Import AI JSON</button>
       </div>
@@ -415,8 +439,10 @@ const els = {
   paste:$("paste"), status:$("load-status"), engine:$("engine-status"),
   generate:$("btn-generate"), start:$("btn-start"), sample:$("btn-sample"),
   tabParse:$("tab-parse"), tabGen:$("tab-gen"), editor:$("q-editor"),
-  genSettings:$("gen-settings"), aiRow:$("ai-row"), pasteHint:$("paste-hint"),
+  genSettings:$("gen-settings"), parseSettings:$("parse-settings"),
+  aiRow:$("ai-row"), pasteHint:$("paste-hint"),
   numQ:$("num-q"), mixMulti:$("mix-multi"),
+  rangeFrom:$("range-from"), rangeTo:$("range-to"), shuffleQuiz:$("shuffle-quiz"), rangeHint:$("range-hint"),
   aiCopy:$("btn-ai-copy"), aiImport:$("btn-ai-import"), aiJson:$("ai-json"),
   parseBarWrap:$("parse-bar-wrap"), parseBar:$("parse-bar"),
   textDetails:$("text-details"), btnAny:$("btn-any"),
@@ -614,7 +640,7 @@ function renderEditor(){
   els.editor.classList.remove("hidden");
   els.editor.innerHTML=questions.map((q,i)=>`
     <article class="q-mini">
-      <b>Q${i+1} · ${q.isMulti?"Multi ("+(q.expectedCount===Infinity?"all":q.expectedCount)+")":"Single"}</b>
+      <b>Q${i+1} (PDF #${q.id}) · ${q.isMulti?"Multi ("+(q.expectedCount===Infinity?"all":q.expectedCount)+")":"Single"}</b>
       <div>${escapeHtml(q.text)}</div>
       <div class="hint">${q.options.map(o=>(q.correct.includes(o.letter)?"✓ ":"")+o.letter+". "+o.text).map(escapeHtml).join(" · ")}</div>
     </article>`).join("");
@@ -626,13 +652,38 @@ function loadQuestions(list, sourceLabel){
   els.start.disabled=questions.length===0;
   if(!questions.length){
     setStatus(mode==="parse"
-      ? "No questions detected. Check the format matches 'Question 1 / A. option / Correct Answer: X', or paste text and try again."
+      ? "No questions detected in that range. Check the format matches 'Question 1 / A. option / Correct Answer: X', or adjust the range."
       : "Could not build questions from that text. Try the sample, or use Copy AI prompt.", true);
     renderEditor(); return;
   }
   const multi=questions.filter(q=>q.isMulti).length;
-  setStatus(`Ready: ${questions.length} question(s) from ${sourceLabel} (${multi} multi-choice checkboxes, ${questions.length-multi} single-choice). Review below, then Start quiz.`);
+  setStatus(`Ready: ${questions.length} question(s) — ${sourceLabel} (${multi} multi-choice checkboxes, ${questions.length-multi} single-choice). Review below, then Start quiz.`);
   renderEditor();
+}
+
+/* ---------------- Range / shuffle preview (parse mode) ---------------- */
+function getQuestionIdRange(all){
+  const ids=all.map(q=>parseInt(q.id,10)).filter(Number.isFinite);
+  if(!ids.length) return { min:1, max:all.length };
+  return { min:Math.min(...ids), max:Math.max(...ids) };
+}
+function updateParseRangeHint(){
+  if(mode!=="parse") return;
+  const text=(els.paste.value||sourceText).trim();
+  if(!text){ els.rangeHint.classList.add("hidden"); return; }
+  const all=parseQuizText(text);
+  if(!all.length){
+    els.rangeHint.textContent="No questions detected yet in this text.";
+    els.rangeHint.classList.remove("hidden");
+    return;
+  }
+  const { min, max } = getQuestionIdRange(all);
+  els.rangeFrom.placeholder="From ("+min+")";
+  els.rangeTo.placeholder="To ("+max+")";
+  els.rangeFrom.min=min; els.rangeFrom.max=max;
+  els.rangeTo.min=min; els.rangeTo.max=max;
+  els.rangeHint.textContent=`${all.length} question(s) detected (numbered ${min}–${max}). Leave range blank to use all.`;
+  els.rangeHint.classList.remove("hidden");
 }
 
 /* ---------------- Quiz runtime (shared) ---------------- */
@@ -707,8 +758,34 @@ function renderResults(){
 function runProcess(){
   const text=els.paste.value.trim()||sourceText;
   if(!text){ setStatus("Load a PDF or paste text first.", true); return; }
-  if(mode==="parse") loadQuestions(parseQuizText(text), "parsed quiz");
-  else {
+
+  if(mode==="parse"){
+    const all=parseQuizText(text);
+    if(!all.length){ loadQuestions([], "parsed quiz"); return; }
+
+    const { min, max } = getQuestionIdRange(all);
+    let from=parseInt(els.rangeFrom.value,10);
+    let to=parseInt(els.rangeTo.value,10);
+    if(!Number.isFinite(from)) from=min;
+    if(!Number.isFinite(to)) to=max;
+    if(from>to){ const tmp=from; from=to; to=tmp; }
+    from=Math.max(min,from); to=Math.min(max,to);
+
+    let filtered=all.filter(q=>{
+      const n=parseInt(q.id,10);
+      return Number.isFinite(n) ? (n>=from && n<=to) : true;
+    });
+
+    const doShuffle=els.shuffleQuiz.checked;
+    if(doShuffle) filtered=shuffle(filtered);
+
+    const rangeLabel=(from===min && to===max) ? `all ${all.length}` : `#${from}–#${to} of ${all.length}`;
+    const orderLabel=doShuffle ? "shuffled order" : "original order";
+    els.rangeHint.textContent=`Using ${rangeLabel} question(s), ${orderLabel}.`;
+    els.rangeHint.classList.remove("hidden");
+
+    loadQuestions(filtered, `range ${rangeLabel}, ${orderLabel}`);
+  } else {
     const n=Math.max(4, Math.min(40, Number(els.numQ.value)||12));
     const allowMulti=els.mixMulti.value==="yes";
     loadQuestions(generateFromContent(text, n, allowMulti), "generated notes");
@@ -734,6 +811,7 @@ async function handleFile(file){
     } else {
       setStatus("Extracted "+text.length.toLocaleString()+" characters from "+file.name+". Tap "+(mode==="parse"?"Parse quiz questions.":"Generate questions."));
       els.generate.disabled=false;
+      updateParseRangeHint();
     }
   } catch(err){
     console.error(err);
@@ -749,13 +827,15 @@ function setMode(newMode){
   els.tabParse.classList.toggle("on", mode==="parse");
   els.tabGen.classList.toggle("on", mode==="generate");
   els.genSettings.classList.toggle("hidden", mode!=="generate");
-  els.aiRow.classList.toggle("hidden", mode!=="generate");
+  els.parseSettings.classList.toggle("hidden", mode!=="parse");
   els.generate.textContent = mode==="parse" ? "Parse quiz questions" : "Generate questions";
   els.pasteHint.textContent = mode==="parse"
     ? "Works best with 'Question 1 / A. option / Correct Answer: X' style text. Paste here if the PDF layout confuses the parser."
     : "Works with plain study notes, guides, or handouts. Paste here if extraction misses something.";
   questions=[]; answers=[]; els.start.classList.add("hidden"); els.editor.classList.add("hidden");
+  els.rangeHint.classList.add("hidden");
   setStatus("Mode: " + (mode==="parse" ? "Parse existing quiz." : "Generate from content.") + " Load sample, pick a PDF, or paste text.");
+  if(mode==="parse") updateParseRangeHint();
 }
 
 els.tabParse.addEventListener("click", ()=>setMode("parse"));
@@ -772,6 +852,7 @@ els.sample.addEventListener("click", ()=>{
   else { els.paste.value=SAMPLE_CONTENT; sourceText=SAMPLE_CONTENT; }
   els.generate.disabled=false; els.textDetails.open=true;
   setStatus("Sample loaded. Tap "+(mode==="parse"?"Parse quiz questions.":"Generate questions."));
+  if(mode==="parse") updateParseRangeHint();
 });
 els.generate.addEventListener("click", runProcess);
 els.start.addEventListener("click", ()=>{ if(!questions.length) return; answers=[]; index=0; show("quiz"); renderQuestion(); });
@@ -813,7 +894,11 @@ els.aiImport.addEventListener("click", ()=>{
     loadQuestions(list, "AI import");
   } catch { setStatus("That JSON could not be parsed. Check the paste.", true); }
 });
-els.paste.addEventListener("input", ()=>{ sourceText=els.paste.value; els.generate.disabled=!sourceText.trim(); });
+els.paste.addEventListener("input", ()=>{
+  sourceText=els.paste.value;
+  els.generate.disabled=!sourceText.trim();
+  if(mode==="parse") updateParseRangeHint();
+});
 
 window.addEventListener("error", e=>console.error(e.error||e.message));
 window.addEventListener("unhandledrejection", e=>console.error(e.reason));
