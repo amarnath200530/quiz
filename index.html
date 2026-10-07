@@ -39,7 +39,7 @@
   .ghost { background:#f8fafc; color:var(--ink); border:1px solid var(--line); }
   .violet { background:var(--accent); color:#fff; }
   button:disabled { opacity:.5; cursor:not-allowed; }
-  textarea, input[type=text], input[type=number], select {
+  textarea, input[type=text], input[type=number], input[type=password], select {
     width:100%; padding:12px; border-radius:10px; border:1px solid var(--line);
     font:inherit; color:inherit; font-size:16px !important; max-width:100%;
   }
@@ -92,6 +92,24 @@
   summary { cursor:pointer; color:var(--brand-dark); font-weight:650; padding:8px 0; min-height:44px; }
   .warn { background:#fff7ed; border-left:4px solid #f97316; padding:10px 12px; border-radius:8px; font-size:.88rem; color:#9a3412; margin-top:12px; }
   .sticky-actions { position:sticky; bottom:0; z-index:5; padding:12px 0 max(8px,var(--safe-bot)); background:linear-gradient(to bottom, rgba(255,255,255,0), #fff 28%); }
+
+  /* ---- Auth / admin / modal / publish additions ---- */
+  .topbar { max-width:960px; margin:0 auto; padding:0 16px 10px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+  .topbar .who { font-weight:650; font-size:.92rem; color:var(--muted); }
+  .topbar .row { gap:8px; }
+  .modal-overlay { position:fixed; inset:0; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50; overflow:auto; }
+  .modal-card { background:#fff; border-radius:16px; padding:20px; max-width:560px; width:100%; box-shadow:var(--shadow); max-height:90vh; overflow:auto; }
+  .modal-card h3 { margin:0 0 12px; }
+  .danger-btn { color:var(--bad); border-color:#fca5a5; }
+  .user-row { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .pill { display:inline-block; font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:999px; background:#ecfeff; color:var(--brand-dark); margin-left:6px; }
+  .pill.pending { background:#fff7ed; color:#9a3412; }
+  .btn-badge { position:relative; }
+  .btn-badge .dot { position:absolute; top:-4px; right:-4px; width:12px; height:12px; border-radius:50%; background:#f97316; border:2px solid #fff; }
+  .sync-note { font-size:.8rem; color:var(--muted); margin-top:6px; }
+  .steps { margin:10px 0 0; padding-left:20px; line-height:1.6; }
+  .steps li { margin-bottom:6px; }
+  code.inline { background:#f1f5f9; padding:2px 6px; border-radius:6px; font-size:.85em; }
 </style>
 </head>
 <body>
@@ -99,8 +117,68 @@
   <h1>PDF Quiz Studio</h1>
   <p>Practice an existing quiz PDF, or turn plain study notes into a quiz. Works on desktop and mobile.</p>
 </header>
+
+<div class="topbar hidden" id="topbar">
+  <span class="who" id="whoami"></span>
+  <div class="row">
+    <button class="ghost btn-badge" id="btn-publish" type="button">Publish Changes<span class="dot hidden" id="publish-dot"></span></button>
+    <button class="ghost" id="btn-change-pw" type="button">Change Password</button>
+    <button class="ghost hidden" id="btn-admin" type="button">Manage Users</button>
+    <button class="ghost" id="btn-logout" type="button">Logout</button>
+  </div>
+</div>
+
 <main>
-  <section id="screen-load" class="card">
+
+  <!-- ===================== LOGIN SCREEN ===================== -->
+  <section id="screen-login" class="card">
+    <h2 style="margin-top:0">Sign in</h2>
+    <div class="grid2">
+      <label class="field">Username
+        <input id="login-username" type="text" autocomplete="username" />
+      </label>
+      <label class="field">Password
+        <input id="login-password" type="password" autocomplete="current-password" />
+      </label>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" id="btn-login" type="button">Login</button>
+      <button class="ghost" id="btn-sync" type="button">Refresh user list</button>
+    </div>
+    <p class="status error hidden" id="login-error"></p>
+    <p class="sync-note" id="sync-note">Loading account list…</p>
+    <p class="hint">Default admin login: <b>admin</b> / <b>admin</b>. Please change the password after first login.</p>
+  </section>
+
+  <!-- ===================== USER MANAGEMENT (ADMIN ONLY) ===================== -->
+  <section id="screen-admin" class="card hidden">
+    <h2 style="margin-top:0">Manage Users</h2>
+    <p class="hint" id="admin-pending-note"></p>
+    <div class="grid2">
+      <label class="field">New username
+        <input id="new-username" type="text" autocomplete="off" />
+      </label>
+      <label class="field">New password
+        <input id="new-password" type="password" autocomplete="new-password" />
+      </label>
+    </div>
+    <label class="field" style="margin-top:10px">Role
+      <select id="new-role">
+        <option value="user" selected>User</option>
+        <option value="admin">Admin</option>
+      </select>
+    </label>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" id="btn-create-user" type="button">Create user</button>
+      <button class="ghost" id="btn-admin-back" type="button">Back to quiz tool</button>
+    </div>
+    <p class="status error hidden" id="admin-error"></p>
+    <h3 style="margin-top:22px">Existing users</h3>
+    <div id="user-list" class="q-editor" style="max-height:none"></div>
+  </section>
+
+  <!-- ===================== QUIZ TOOL (original) ===================== -->
+  <section id="screen-load" class="card hidden">
     <div class="tabs">
       <button class="tab on" id="tab-parse" type="button">📋 Parse existing quiz</button>
       <button class="tab" id="tab-gen" type="button">🧠 Generate from content</button>
@@ -182,6 +260,7 @@
     <div class="options" id="q-options"></div>
     <div id="q-feedback" class="hidden"></div>
     <div class="row sticky-actions">
+      <button class="ghost" id="btn-prev" type="button">Prev</button>
       <button class="primary" id="btn-submit" type="button">Submit answer</button>
       <button class="ghost hidden" id="btn-next" type="button">Next question</button>
     </div>
@@ -200,8 +279,362 @@
   </section>
 </main>
 
+<!-- ===================== CHANGE PASSWORD MODAL ===================== -->
+<div class="modal-overlay hidden" id="modal-overlay">
+  <div class="modal-card">
+    <h3>Change password</h3>
+    <label class="field">Current password
+      <input id="cp-current" type="password" autocomplete="current-password" />
+    </label>
+    <label class="field" style="margin-top:10px">New password
+      <input id="cp-new" type="password" autocomplete="new-password" />
+    </label>
+    <label class="field" style="margin-top:10px">Confirm new password
+      <input id="cp-confirm" type="password" autocomplete="new-password" />
+    </label>
+    <p class="status error hidden" id="cp-error"></p>
+    <p class="status hidden" id="cp-success"></p>
+    <div class="row" style="margin-top:14px; justify-content:flex-end">
+      <button class="ghost" id="btn-cp-cancel" type="button">Cancel</button>
+      <button class="primary" id="btn-cp-save" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== PUBLISH CHANGES MODAL ===================== -->
+<div class="modal-overlay hidden" id="publish-overlay">
+  <div class="modal-card">
+    <h3>Publish changes to GitHub</h3>
+    <p class="hint">This site is hosted statically, so changes to user accounts aren't live for everyone until you update the <code class="inline">users.json</code> file in your repository.</p>
+    <ol class="steps">
+      <li>Click <b>Download users.json</b> below (or Copy JSON).</li>
+      <li>In your GitHub repo, replace the existing <code class="inline">users.json</code> file with this one.</li>
+      <li>Commit &amp; push. GitHub Pages will redeploy in about 30–60 seconds.</li>
+      <li>Come back here and click <b>Refresh user list</b> (or just reload the page) — the pending badge will clear automatically once it detects your published file matches.</li>
+    </ol>
+    <textarea id="publish-json" readonly style="margin-top:12px; min-height:200px;"></textarea>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" id="btn-publish-download" type="button">Download users.json</button>
+      <button class="ghost" id="btn-publish-copy" type="button">Copy JSON</button>
+      <button class="ghost" id="btn-publish-close" type="button">Close</button>
+    </div>
+    <p class="hint" id="publish-status"></p>
+  </div>
+</div>
+
 <script>
-/* ---------------- PDF engine (local-first, CDN fallback, mobile-safe) ---------------- */
+/* =====================================================================
+   AUTH MODULE — file-based (users.json in repo) + local "pending changes"
+   =====================================================================
+   - users.json is fetched from the repo and treated as the shared source
+     of truth for everyone who loads the site.
+   - Since GitHub Pages is static, the app cannot write back to the repo.
+     Any create/delete/password-change is kept as a "pending" overlay in
+     localStorage until an admin downloads the merged JSON and pushes it
+     to GitHub. Once the published file matches, the pending flag clears
+     automatically on the next sync.
+   ===================================================================== */
+const USERS_FILE_URL   = "./users.json";
+const REMOTE_CACHE_KEY = "pqs_remote_cache_v1";
+const OVERLAY_KEY      = "pqs_overlay_v1";
+const SESSION_KEY      = "pqs_session_v1";
+
+async function sha256Hex(str){
+  if(window.crypto && crypto.subtle){
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+    return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,"0")).join("");
+  }
+  let h=0; for(let i=0;i<str.length;i++){ h=(Math.imul(31,h)+str.charCodeAt(i))|0; }
+  return "fallback_"+h;
+}
+function randomSalt(){
+  const arr=new Uint8Array(16); crypto.getRandomValues(arr);
+  return [...arr].map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+async function hashPassword(password, salt){ return sha256Hex(salt+":"+password); }
+
+/* ---- Remote cache (last successfully fetched users.json) ---- */
+function getRemoteCache(){ try{ return JSON.parse(localStorage.getItem(REMOTE_CACHE_KEY)||"null"); } catch { return null; } }
+function setRemoteCache(data){ localStorage.setItem(REMOTE_CACHE_KEY, JSON.stringify(data)); }
+
+async function fetchRemoteUsers(){
+  try{
+    const res = await fetch(USERS_FILE_URL + "?t=" + Date.now(), { cache: "no-store" });
+    if(!res.ok) return null; // 404 = file not created yet, that's OK on first run
+    const data = await res.json();
+    if(!data || !Array.isArray(data.users)) return null;
+    setRemoteCache(data);
+    return data;
+  } catch(e){
+    console.warn("Could not fetch users.json (offline or not deployed yet):", e);
+    return null;
+  }
+}
+
+/* ---- Local overlay: changes not yet published to GitHub ---- */
+function getOverlay(){
+  try{
+    const o = JSON.parse(localStorage.getItem(OVERLAY_KEY)||"null");
+    if(o && typeof o==="object") return { upserts: o.upserts||{}, deletes: o.deletes||[] };
+  } catch {}
+  return { upserts:{}, deletes:[] };
+}
+function saveOverlay(o){ localStorage.setItem(OVERLAY_KEY, JSON.stringify(o)); }
+function overlayIsEmpty(o){ return Object.keys(o.upserts).length===0 && o.deletes.length===0; }
+
+/* Remove overlay entries once the remote file already reflects them */
+function reconcileOverlay(remote){
+  const overlay=getOverlay();
+  let changed=false;
+  if(remote){
+    for(const uname of Object.keys(overlay.upserts)){
+      const local=overlay.upserts[uname];
+      const remoteUser=remote.users.find(u=>u.username===uname);
+      if(remoteUser && remoteUser.hash===local.hash && remoteUser.salt===local.salt && remoteUser.role===local.role){
+        delete overlay.upserts[uname]; changed=true;
+      }
+    }
+    overlay.deletes=overlay.deletes.filter(uname=>{
+      const stillThere=remote.users.some(u=>u.username===uname);
+      if(!stillThere) changed=true;
+      return stillThere;
+    });
+  }
+  if(changed) saveOverlay(overlay);
+  return overlay;
+}
+
+let BOOTSTRAPPED=false;
+async function getEffectiveUsers(){
+  const remote = getRemoteCache();
+  let overlay = reconcileOverlay(remote);
+  let base = remote ? remote.users.slice() : [];
+  base = base.filter(u=>!overlay.deletes.includes(u.username));
+  base = base.map(u=> overlay.upserts[u.username] ? overlay.upserts[u.username] : u);
+  Object.values(overlay.upserts).forEach(u=>{
+    if(!base.some(b=>b.username===u.username)) base.push(u);
+  });
+  // First-run bootstrap: nothing published, nothing pending -> create default admin/admin locally
+  if(base.length===0 && !BOOTSTRAPPED){
+    BOOTSTRAPPED=true;
+    const salt=randomSalt();
+    const hash=await hashPassword("admin", salt);
+    overlay.upserts["admin"]={ username:"admin", role:"admin", salt, hash };
+    saveOverlay(overlay);
+    base=[overlay.upserts["admin"]];
+  }
+  return base;
+}
+function hasPendingChanges(){ return !overlayIsEmpty(getOverlay()); }
+
+async function attemptLogin(username, password){
+  const users = await getEffectiveUsers();
+  const u=users.find(x=>x.username.toLowerCase()===String(username).trim().toLowerCase());
+  if(!u) return null;
+  const hash=await hashPassword(password, u.salt);
+  if(hash!==u.hash) return null;
+  return u;
+}
+function setSession(user){ sessionStorage.setItem(SESSION_KEY, JSON.stringify({username:user.username, role:user.role})); }
+function getSession(){ try{ return JSON.parse(sessionStorage.getItem(SESSION_KEY)||"null"); } catch { return null; } }
+function clearSession(){ sessionStorage.removeItem(SESSION_KEY); }
+
+/* ---------------- DOM refs (auth) ---------------- */
+const $ = id => document.getElementById(id);
+const authEls = {
+  topbar:$("topbar"), whoami:$("whoami"),
+  btnPublish:$("btn-publish"), publishDot:$("publish-dot"),
+  btnChangePw:$("btn-change-pw"), btnAdmin:$("btn-admin"), btnLogout:$("btn-logout"),
+  screenLogin:$("screen-login"), loginUsername:$("login-username"), loginPassword:$("login-password"),
+  btnLogin:$("btn-login"), btnSync:$("btn-sync"), loginError:$("login-error"), syncNote:$("sync-note"),
+  screenAdmin:$("screen-admin"), newUsername:$("new-username"), newPassword:$("new-password"),
+  newRole:$("new-role"), btnCreateUser:$("btn-create-user"), btnAdminBack:$("btn-admin-back"),
+  adminError:$("admin-error"), userList:$("user-list"), adminPendingNote:$("admin-pending-note"),
+  modalOverlay:$("modal-overlay"), cpCurrent:$("cp-current"), cpNew:$("cp-new"), cpConfirm:$("cp-confirm"),
+  cpError:$("cp-error"), cpSuccess:$("cp-success"), btnCpCancel:$("btn-cp-cancel"), btnCpSave:$("btn-cp-save"),
+  screenLoad:$("screen-load"), screenQuiz:$("screen-quiz"), screenResults:$("screen-results"),
+  publishOverlay:$("publish-overlay"), publishJson:$("publish-json"), publishStatus:$("publish-status"),
+  btnPublishDownload:$("btn-publish-download"), btnPublishCopy:$("btn-publish-copy"), btnPublishClose:$("btn-publish-close")
+};
+
+function showScreen(name){
+  const map = { login:authEls.screenLogin, admin:authEls.screenAdmin, load:authEls.screenLoad, quiz:authEls.screenQuiz, results:authEls.screenResults };
+  Object.entries(map).forEach(([key, el])=> el.classList.toggle("hidden", key!==name));
+  authEls.topbar.classList.toggle("hidden", name==="login");
+  window.scrollTo(0,0);
+}
+function loginError(msg){ authEls.loginError.textContent=msg; authEls.loginError.classList.remove("hidden"); }
+function clearLoginError(){ authEls.loginError.classList.add("hidden"); }
+function adminError(msg){ authEls.adminError.textContent=msg; authEls.adminError.classList.remove("hidden"); }
+function clearAdminError(){ authEls.adminError.classList.add("hidden"); }
+function cpError(msg){ authEls.cpError.textContent=msg; authEls.cpError.classList.remove("hidden"); authEls.cpSuccess.classList.add("hidden"); }
+function cpSuccess(msg){ authEls.cpSuccess.textContent=msg; authEls.cpSuccess.classList.remove("hidden"); authEls.cpError.classList.add("hidden"); }
+
+function refreshPublishBadge(){
+  const pending=hasPendingChanges();
+  authEls.publishDot.classList.toggle("hidden", !pending);
+  authEls.adminPendingNote.textContent = pending
+    ? "⚠️ There are unpublished changes. Click \"Publish Changes\" in the top bar to make them live for everyone."
+    : "✅ Everything here matches the published users.json.";
+}
+
+function enterApp(session){
+  authEls.whoami.textContent = `Signed in as ${session.username} (${session.role})`;
+  authEls.btnAdmin.classList.toggle("hidden", session.role!=="admin");
+  refreshPublishBadge();
+  showScreen("load");
+}
+
+async function syncUsers(showStatus){
+  if(showStatus) authEls.syncNote.textContent="Checking for the latest users.json…";
+  const remote = await fetchRemoteUsers();
+  reconcileOverlay(remote);
+  if(showStatus){
+    authEls.syncNote.textContent = remote
+      ? "Synced with GitHub just now."
+      : "Could not reach users.json (offline, or it hasn't been published yet) — using the last known copy on this device.";
+  }
+  refreshPublishBadge();
+  return remote;
+}
+
+authEls.btnSync.addEventListener("click", ()=>syncUsers(true));
+
+authEls.btnLogin.addEventListener("click", async ()=>{
+  clearLoginError();
+  const u=authEls.loginUsername.value, p=authEls.loginPassword.value;
+  if(!u||!p){ loginError("Enter a username and password."); return; }
+  const user=await attemptLogin(u,p);
+  if(!user){ loginError("Invalid username or password."); return; }
+  setSession(user);
+  authEls.loginPassword.value="";
+  enterApp(user);
+});
+[authEls.loginUsername, authEls.loginPassword].forEach(inp=>{
+  inp.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); authEls.btnLogin.click(); } });
+});
+authEls.btnLogout.addEventListener("click", ()=>{ clearSession(); location.reload(); });
+
+/* ---------------- Change password ---------------- */
+function openChangePasswordModal(){
+  authEls.cpCurrent.value=""; authEls.cpNew.value=""; authEls.cpConfirm.value="";
+  authEls.cpError.classList.add("hidden"); authEls.cpSuccess.classList.add("hidden");
+  authEls.modalOverlay.classList.remove("hidden");
+}
+function closeChangePasswordModal(){ authEls.modalOverlay.classList.add("hidden"); }
+authEls.btnChangePw.addEventListener("click", openChangePasswordModal);
+authEls.btnCpCancel.addEventListener("click", closeChangePasswordModal);
+authEls.btnCpSave.addEventListener("click", async ()=>{
+  const session=getSession(); if(!session) return;
+  const users=await getEffectiveUsers();
+  const u=users.find(x=>x.username===session.username);
+  if(!u){ cpError("User not found."); return; }
+  const cur=authEls.cpCurrent.value, next=authEls.cpNew.value, confirm=authEls.cpConfirm.value;
+  const curHash=await hashPassword(cur, u.salt);
+  if(curHash!==u.hash){ cpError("Current password is incorrect."); return; }
+  if(next.length<4){ cpError("New password must be at least 4 characters."); return; }
+  if(next!==confirm){ cpError("New passwords do not match."); return; }
+  const salt=randomSalt();
+  const hash=await hashPassword(next, salt);
+  const overlay=getOverlay();
+  overlay.upserts[u.username]={ username:u.username, role:u.role, salt, hash };
+  // undo any pending delete of self (shouldn't normally happen)
+  overlay.deletes=overlay.deletes.filter(n=>n!==u.username);
+  saveOverlay(overlay);
+  cpSuccess("Password updated on this device. Click \"Publish Changes\" in the top bar to make it permanent.");
+  refreshPublishBadge();
+  setTimeout(closeChangePasswordModal, 1800);
+});
+
+/* ---------------- Admin: manage users ---------------- */
+async function renderUserList(){
+  const users=await getEffectiveUsers();
+  const overlay=getOverlay();
+  const session=getSession();
+  const admins=users.filter(u=>u.role==="admin");
+  authEls.userList.innerHTML = users.map(u=>{
+    const isSelf = u.username===session.username;
+    const isOnlyAdmin = u.role==="admin" && admins.length<=1;
+    const disabled = isSelf || isOnlyAdmin;
+    const reason = isSelf ? "Cannot delete your own account" : (isOnlyAdmin ? "Cannot delete the only admin" : "");
+    const isPending = !!overlay.upserts[u.username] || false;
+    return `<div class="q-mini user-row">
+      <div><b>${escapeHtml(u.username)}</b><span class="pill">${u.role}</span>${isPending?'<span class="pill pending">unpublished</span>':""}</div>
+      <button class="ghost danger-btn" data-username="${escapeHtml(u.username)}" type="button" ${disabled?`disabled title="${reason}"`:""}>Delete</button>
+    </div>`;
+  }).join("");
+  authEls.userList.querySelectorAll("button[data-username]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const username=btn.dataset.username;
+      if(!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+      const overlay=getOverlay();
+      delete overlay.upserts[username];
+      if(!overlay.deletes.includes(username)) overlay.deletes.push(username);
+      saveOverlay(overlay);
+      refreshPublishBadge();
+      renderUserList();
+    });
+  });
+  refreshPublishBadge();
+}
+authEls.btnAdmin.addEventListener("click", async ()=>{
+  const session=getSession();
+  if(!session || session.role!=="admin"){ alert("Admin access required."); return; }
+  clearAdminError(); authEls.newUsername.value=""; authEls.newPassword.value=""; authEls.newRole.value="user";
+  await renderUserList();
+  showScreen("admin");
+});
+authEls.btnAdminBack.addEventListener("click", ()=> showScreen("load"));
+authEls.btnCreateUser.addEventListener("click", async ()=>{
+  clearAdminError();
+  const username=authEls.newUsername.value.trim();
+  const password=authEls.newPassword.value;
+  const role=authEls.newRole.value;
+  if(!username || !password){ adminError("Username and password are required."); return; }
+  if(password.length<4){ adminError("Password must be at least 4 characters."); return; }
+  const users=await getEffectiveUsers();
+  if(users.some(u=>u.username.toLowerCase()===username.toLowerCase())){ adminError("That username already exists."); return; }
+  const salt=randomSalt();
+  const hash=await hashPassword(password, salt);
+  const overlay=getOverlay();
+  overlay.upserts[username]={ username, role, salt, hash };
+  overlay.deletes=overlay.deletes.filter(n=>n!==username);
+  saveOverlay(overlay);
+  authEls.newUsername.value=""; authEls.newPassword.value=""; authEls.newRole.value="user";
+  await renderUserList();
+});
+
+/* ---------------- Publish changes modal ---------------- */
+async function openPublishModal(){
+  const users = await getEffectiveUsers();
+  const json = JSON.stringify({ users }, null, 2);
+  authEls.publishJson.value = json;
+  authEls.publishStatus.textContent = hasPendingChanges()
+    ? "This JSON includes your unpublished changes."
+    : "No pending changes — this matches the last published file.";
+  authEls.publishOverlay.classList.remove("hidden");
+}
+function closePublishModal(){ authEls.publishOverlay.classList.add("hidden"); }
+authEls.btnPublish.addEventListener("click", openPublishModal);
+authEls.btnPublishClose.addEventListener("click", closePublishModal);
+authEls.btnPublishDownload.addEventListener("click", ()=>{
+  const blob=new Blob([authEls.publishJson.value], {type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download="users.json"; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+  authEls.publishStatus.textContent="Downloaded. Replace users.json in your repo, commit, and push.";
+});
+authEls.btnPublishCopy.addEventListener("click", async ()=>{
+  try{ await navigator.clipboard.writeText(authEls.publishJson.value); authEls.publishStatus.textContent="Copied to clipboard."; }
+  catch{ authEls.publishJson.select(); authEls.publishStatus.textContent="Select-all done — copy manually (Ctrl/Cmd+C)."; }
+});
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* =====================================================================
+   PDF engine (local-first, CDN fallback, mobile-safe)
+   ===================================================================== */
 const PDF_CDNS = [
   { lib:"./pdf.min.js", worker:"./pdf.worker.min.js", cMap:"", fonts:"" },
   { lib:"https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js",
@@ -432,7 +865,7 @@ IMPORTANT: If running Flipping Dual or Flipping Triple, always pair it with the 
 
 /* ---------------- Shared state / DOM ---------------- */
 const LETTERS = "ABCDEFGH".split("");
-const $ = id => document.getElementById(id);
+const PASS_SCORE = 75; // percent required to pass
 const els = {
   load:$("screen-load"), quiz:$("screen-quiz"), results:$("screen-results"),
   file:$("file"), fileAny:$("file-any"), dropzone:$("dropzone"), dropTitle:$("drop-title"),
@@ -449,7 +882,7 @@ const els = {
   qPos:$("q-pos"), qScore:$("q-score"), qBar:$("q-bar"),
   qType:$("q-type"), qText:$("q-text"), qHint:$("q-hint"),
   qOptions:$("q-options"), qFeedback:$("q-feedback"),
-  submit:$("btn-submit"), next:$("btn-next"),
+  prev:$("btn-prev"), submit:$("btn-submit"), next:$("btn-next"),
   resPct:$("res-pct"), resSummary:$("res-summary"), resReview:$("res-review"),
   retry:$("btn-retry"), neu:$("btn-new")
 };
@@ -462,7 +895,6 @@ let answers = [];
 let graded = false;
 let parsing = false;
 
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 function shuffle(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
 function uniq(arr){ return [...new Set(arr)]; }
 function wordToCount(word){
@@ -472,12 +904,7 @@ function wordToCount(word){
   const n=parseInt(w,10); return Number.isFinite(n)&&n>0?n:null;
 }
 function setStatus(msg,isError){ els.status.textContent=msg; els.status.className="status"+(isError?" error":""); }
-function show(screen){
-  els.load.classList.toggle("hidden", screen!=="load");
-  els.quiz.classList.toggle("hidden", screen!=="quiz");
-  els.results.classList.toggle("hidden", screen!=="results");
-  window.scrollTo(0,0);
-}
+function show(screen){ showScreen(screen); }
 
 /* ---------------- Parse-existing-quiz logic (V1) ---------------- */
 function detectExpectedCount(text){
@@ -688,19 +1115,36 @@ function updateParseRangeHint(){
 
 /* ---------------- Quiz runtime (shared) ---------------- */
 function selectedLetters(){ return [...els.qOptions.querySelectorAll("input:checked")].map(i=>i.value); }
+
+function applyLockedDisplay(q, rec){
+  [...els.qOptions.querySelectorAll(".opt")].forEach(lab=>{
+    const input=lab.querySelector("input");
+    const letter=input.value;
+    lab.classList.add("locked"); input.disabled=true;
+    if(rec.picked.includes(letter)) input.checked=true;
+    const isCorrect=q.correct.includes(letter), isPicked=rec.picked.includes(letter);
+    if(isCorrect) lab.classList.add(isPicked?"correct":"missed"); else if(isPicked) lab.classList.add("wrong");
+  });
+  const explain=q.explanation ? `<div class="explain">${escapeHtml(q.explanation)}</div>` : "";
+  els.qFeedback.classList.remove("hidden");
+  if(!q.correct.length){ els.qFeedback.className="feedback neutral"; els.qFeedback.innerHTML="No answer key was found for this question."+explain; }
+  else if(rec.correct){ els.qFeedback.className="feedback ok"; els.qFeedback.innerHTML="Correct"+explain; }
+  else { els.qFeedback.className="feedback bad"; els.qFeedback.innerHTML=`Incorrect. Correct answer${q.correct.length>1?"s":""}: ${q.correct.join(", ")}`+explain; }
+}
+
 function renderQuestion(){
-  const q=questions[index]; graded=false;
+  const q=questions[index];
+  const rec=answers[index];
+  graded=!!rec;
   els.qPos.textContent=`Question ${index+1} of ${questions.length}`;
-  els.qScore.textContent=`Score ${answers.filter(a=>a&&a.correct).length} / ${answers.length}`;
-  els.qBar.style.width=`${(index/questions.length)*100}%`;
+  els.qScore.textContent=`Score ${answers.filter(a=>a&&a.correct).length} / ${answers.filter(Boolean).length}`;
+  els.qBar.style.width=`${((graded?index+1:index)/questions.length)*100}%`;
   if(q.isMulti){
     els.qType.textContent=`Multiple choice — select ${q.expectedCount===Infinity?"all that apply":q.expectedCount}`;
     els.qHint.textContent=q.expectedCount===Infinity ? "Use checkboxes. Select every option that applies." : `Use checkboxes. Select exactly ${q.expectedCount} answer${q.expectedCount>1?"s":""}.`;
   } else { els.qType.textContent="Single choice"; els.qHint.textContent="Select one answer."; }
   els.qText.textContent=q.text;
-  els.qFeedback.className="hidden";
-  els.submit.classList.remove("hidden"); els.next.classList.add("hidden");
-  els.next.textContent = index===questions.length-1 ? "See results" : "Next question";
+  els.qFeedback.className="hidden"; els.qFeedback.innerHTML="";
   const type=q.isMulti?"checkbox":"radio";
   els.qOptions.innerHTML=q.options.map(opt=>`
     <label class="opt">
@@ -708,13 +1152,25 @@ function renderQuestion(){
       <span class="letter">${opt.letter}</span>
       <span>${escapeHtml(opt.text)}</span>
     </label>`).join("");
-  els.qOptions.querySelectorAll("input").forEach(input=>{
-    input.addEventListener("change", ()=>{
-      if(!q.isMulti || q.expectedCount===Infinity || graded) return;
-      const checked=[...els.qOptions.querySelectorAll("input")].filter(b=>b.checked);
-      if(checked.length>q.expectedCount) input.checked=false;
+
+  els.prev.disabled = index===0;
+
+  if(graded){
+    applyLockedDisplay(q, rec);
+    els.submit.classList.add("hidden");
+    els.next.classList.remove("hidden");
+  } else {
+    els.qOptions.querySelectorAll("input").forEach(input=>{
+      input.addEventListener("change", ()=>{
+        if(!q.isMulti || q.expectedCount===Infinity || graded) return;
+        const checked=[...els.qOptions.querySelectorAll("input")].filter(b=>b.checked);
+        if(checked.length>q.expectedCount) input.checked=false;
+      });
     });
-  });
+    els.submit.classList.remove("hidden");
+    els.next.classList.add("hidden");
+  }
+  els.next.textContent = index===questions.length-1 ? "See results" : "Next question";
 }
 function gradeCurrent(){
   const q=questions[index]; const picked=selectedLetters();
@@ -722,17 +1178,7 @@ function gradeCurrent(){
   if(q.isMulti && q.expectedCount!==Infinity && picked.length!==q.expectedCount){ els.qFeedback.className="feedback bad"; els.qFeedback.innerHTML=`Select exactly ${q.expectedCount} option(s). You selected ${picked.length}.`; els.qFeedback.classList.remove("hidden"); return; }
   const ok = q.correct.length ? (picked.length===q.correct.length && q.correct.every(c=>picked.includes(c))) : false;
   answers[index]={picked, correct:ok};
-  [...els.qOptions.querySelectorAll(".opt")].forEach(lab=>{
-    const letter=lab.querySelector("input").value;
-    lab.classList.add("locked"); lab.querySelector("input").disabled=true;
-    const isCorrect=q.correct.includes(letter), isPicked=picked.includes(letter);
-    if(isCorrect) lab.classList.add(isPicked?"correct":"missed"); else if(isPicked) lab.classList.add("wrong");
-  });
-  const explain=q.explanation ? `<div class="explain">${escapeHtml(q.explanation)}</div>` : "";
-  els.qFeedback.classList.remove("hidden");
-  if(!q.correct.length){ els.qFeedback.className="feedback neutral"; els.qFeedback.innerHTML="No answer key was found for this question."+explain; }
-  else if(ok){ els.qFeedback.className="feedback ok"; els.qFeedback.innerHTML="Correct"+explain; }
-  else { els.qFeedback.className="feedback bad"; els.qFeedback.innerHTML=`Incorrect. Correct answer${q.correct.length>1?"s":""}: ${q.correct.join(", ")}`+explain; }
+  applyLockedDisplay(q, answers[index]);
   graded=true; els.submit.classList.add("hidden"); els.next.classList.remove("hidden");
   els.qScore.textContent=`Score ${answers.filter(a=>a&&a.correct).length} / ${answers.filter(Boolean).length}`;
   els.qBar.style.width=`${((index+1)/questions.length)*100}%`;
@@ -740,8 +1186,12 @@ function gradeCurrent(){
 function renderResults(){
   const total=questions.length, earned=answers.filter(a=>a&&a.correct).length;
   const pct=total?Math.round((earned/total)*100):0;
-  els.resPct.textContent=pct+"%"; els.resPct.style.color=pct>=70?"var(--ok)":"var(--bad)";
-  els.resSummary.textContent=`You scored ${earned} of ${total}`;
+  const passed = pct >= PASS_SCORE;
+  els.resPct.textContent=pct+"%"; els.resPct.style.color=passed?"var(--ok)":"var(--bad)";
+  els.resSummary.innerHTML = `You scored ${earned} of ${total} (${pct}%). Pass mark: ${PASS_SCORE}%.<br>` +
+    (passed
+      ? `<strong style="color:var(--ok)">🎉 Congratulations — you passed the exam!</strong>`
+      : `<strong style="color:var(--bad)">Good luck for your next try — keep practicing!</strong>`);
   els.resReview.innerHTML=questions.map((q,i)=>{
     const rec=answers[i]||{picked:[], correct:false};
     return `<article class="review-item">
@@ -857,6 +1307,7 @@ els.sample.addEventListener("click", ()=>{
 els.generate.addEventListener("click", runProcess);
 els.start.addEventListener("click", ()=>{ if(!questions.length) return; answers=[]; index=0; show("quiz"); renderQuestion(); });
 els.submit.addEventListener("click", gradeCurrent);
+els.prev.addEventListener("click", ()=>{ if(index<=0) return; index-=1; renderQuestion(); });
 els.next.addEventListener("click", ()=>{ if(!graded) return; if(index>=questions.length-1) renderResults(); else { index+=1; renderQuestion(); } });
 els.retry.addEventListener("click", ()=>{ answers=[]; index=0; show("quiz"); renderQuestion(); });
 els.neu.addEventListener("click", ()=>show("load"));
@@ -907,6 +1358,13 @@ setMode("parse");
 ensurePdfEngine(msg=>{ els.engine.textContent=msg; })
   .then(()=>{ els.engine.textContent="PDF engine ready — pick a PDF anytime."; })
   .catch(()=>{ els.engine.textContent="PDF engine will retry automatically when you pick a file. Sample / paste text still work now."; });
+
+/* ---------------- Boot: auth gate ---------------- */
+(async function initAuth(){
+  await syncUsers(true);
+  const session=getSession();
+  if(session){ enterApp(session); } else { showScreen("login"); }
+})();
 </script>
 </body>
 </html>
