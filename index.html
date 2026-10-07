@@ -906,7 +906,7 @@ function wordToCount(word){
 function setStatus(msg,isError){ els.status.textContent=msg; els.status.className="status"+(isError?" error":""); }
 function show(screen){ showScreen(screen); }
 
-/* ---------------- Parse-existing-quiz logic (V1) ---------------- */
+/* ---------------- Parse-existing-quiz logic (V1 - supports multiple formats) ---------------- */
 function detectExpectedCount(text){
   const t=String(text);
   if(/\bselect\s+all\s+that\s+apply\b/i.test(t)||/\bchoose\s+all\b/i.test(t)) return Infinity;
@@ -918,35 +918,94 @@ function detectExpectedCount(text){
   for(const re of patterns){ const m=t.match(re); if(m){ const n=wordToCount(m[1]); if(n) return n; } }
   return null;
 }
-function parseQuestionBlock(num, body){
-  let correct=[];
-  const ansMatch=body.match(/Correct Answers?:\s*([^\n]+)/i);
-  if(ansMatch){
-    correct=uniq(ansMatch[1].toUpperCase().match(/\b([A-E])\b/g)||ansMatch[1].toUpperCase().match(/[A-E]/g)||[]);
-    body=body.replace(ansMatch[0],"\n");
+
+function parseQuestionBlock(num, rawBody){
+  const body = String(rawBody);
+
+  // 1. Find the first "Ans" / "Answer" / "Correct Answer(s)" marker.
+  //    Everything before it = question + options. Everything right after = the answer.
+  const ansRe = /\b(?:Correct\s+)?Ans(?:wer)?s?\s*[:\.\-]?\s*/i;
+  const ansMatch = body.match(ansRe);
+  const ansIdx = ansMatch ? ansMatch.index : -1;
+  const optionsRegion = ansIdx >= 0 ? body.slice(0, ansIdx) : body;
+
+  // 2. Find every option marker: "A." / "A)" / "A:" / "• A." — anywhere in the
+  //    text (start of line OR after whitespace), single capital letter A-F only.
+  //    This supports both bulleted-list style and inline "A) ... B) ... C) ..." style.
+  const optRe = /(?:^|[\n\s])(?:[•●○◦·▪▫\-]\s*)?([A-F])[\.\):]\s+/g;
+  const starts = [];
+  let m;
+  while((m = optRe.exec(optionsRegion)) !== null){
+    const letterOffset = m[0].indexOf(m[1]);
+    starts.push({ letter: m[1].toUpperCase(), letterStart: m.index + letterOffset, textStart: m.index + m[0].length });
   }
-  const optRe=/(?:^|\n)\s*(?:[•●○◦·▪▫\-]\s*)?([A-E])(?:[\.\)\:])\s+/g;
-  const starts=[]; let m;
-  while((m=optRe.exec(body))!==null) starts.push({letter:m[1].toUpperCase(), matchStart:m.index, textStart:m.index+m[0].length});
-  if(starts.length<2) return null;
-  const questionText=body.slice(0,starts[0].matchStart).replace(/\s+/g," ").trim();
-  const options=starts.map((s,i)=>({letter:s.letter, text:body.slice(s.textStart, i+1<starts.length?starts[i+1].matchStart:body.length).replace(/\s+/g," ").trim()}));
-  let expectedCount=detectExpectedCount(questionText)||detectExpectedCount(body);
-  if(!expectedCount && correct.length>1) expectedCount=correct.length;
-  if(!expectedCount) expectedCount=1;
-  return { id:num, text:questionText||`Question ${num}`, options, correct, isMulti:expectedCount>1||expectedCount===Infinity, expectedCount, explanation:"" };
+  if(starts.length < 2) return null;
+
+  const questionText = optionsRegion.slice(0, starts[0].letterStart).replace(/\s+/g," ").trim();
+  const options = starts.map((s,i) => ({
+    letter: s.letter,
+    text: optionsRegion.slice(s.textStart, i+1 < starts.length ? starts[i+1].letterStart : optionsRegion.length)
+      .replace(/\s+/g," ").trim()
+  })).filter(o => o.text.length > 0);
+  if(options.length < 2) return null;
+
+  // 3. Extract the correct answer letter(s) right after the Ans marker.
+  //    Handles "Ans B", "Ans B)", "Ans B) some explanation text...",
+  //    and multi-answer "Correct Answers: A, B" / "A and B".
+  let correct = [];
+  if(ansMatch){
+    const tail = body.slice(ansIdx + ansMatch[0].length);
+    const multi = tail.match(/^([A-F](?:\s*(?:,|and|&)\s*[A-F])+)/i);
+    if(multi) correct = [...new Set(multi[1].toUpperCase().match(/[A-F]/g))];
+    else {
+      const single = tail.match(/^([A-F])\b/i);
+      if(single) correct = [single[1].toUpperCase()];
+    }
+  }
+
+  let expectedCount = detectExpectedCount(questionText) || detectExpectedCount(body);
+  if(!expectedCount && correct.length > 1) expectedCount = correct.length;
+  if(!expectedCount) expectedCount = 1;
+
+  return {
+    id: num,
+    text: questionText || `Question ${num}`,
+    options,
+    correct,
+    isMulti: expectedCount > 1 || expectedCount === Infinity,
+    expectedCount,
+    explanation: ""
+  };
 }
+
 function parseQuizText(raw){
-  const text=String(raw).replace(/\r\n/g,"\n");
-  const splitRe=/(?:^|\n)\s*Question\s+(\d+)\s*(?:\n|$)/gi;
-  const marks=[]; let m;
-  while((m=splitRe.exec(text))!==null) marks.push({num:m[1], end:m.index+m[0].length, start:m.index});
-  const out=[];
-  for(let i=0;i<marks.length;i++){
-    const q=parseQuestionBlock(marks[i].num, text.slice(marks[i].end, i+1<marks.length?marks[i+1].start:text.length));
+  const text = String(raw).replace(/\r\n/g,"\n");
+  // Matches "Question 1", "Q1.", "Q1)", "Q 1:" etc.
+  const splitRe = /(?:^|\n)\s*Q(?:uestion)?\s*#?\s*(\d+)\s*(?:[\.\):]|\n)/gi;
+  const marks = []; let m;
+  while((m = splitRe.exec(text)) !== null) marks.push({ num:m[1], end:m.index+m[0].length, start:m.index });
+
+  const out = [];
+  for(let i=0; i<marks.length; i++){
+    const body = text.slice(marks[i].end, i+1 < marks.length ? marks[i+1].start : text.length);
+    const q = parseQuestionBlock(marks[i].num, body);
     if(q) out.push(q);
   }
-  return out;
+
+  // De-duplicate: the same question frequently repeats verbatim in PDFs due to
+  // OCR / page-overlap extraction artifacts. Keep the first clean occurrence only.
+  const seen = new Set();
+  const unique = [];
+  for(const q of out){
+    const key = (q.text + "|" + q.options.map(o=>o.text).join("|")).toLowerCase().replace(/\s+/g," ").slice(0,200);
+    if(seen.has(key)) continue;
+    seen.add(key);
+    unique.push(q);
+  }
+
+  // Renumber sequentially — original numbering is unreliable since Q numbers
+  // restart and repeat across different sections in multi-part PDFs like yours.
+  return unique.map((q,i) => ({ ...q, id: String(i+1) }));
 }
 
 /* ---------------- Generate-from-content logic (V2) ---------------- */
