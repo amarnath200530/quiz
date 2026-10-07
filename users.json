@@ -1,3 +1,16 @@
 {
-  "users": []
+  "users": [
+    {
+      "username": "admin",
+      "role": "admin",
+      "salt": "7d1753d95e4eebb9ae80452358584234",
+      "hash": "e07d206aebf33db70e99802d3fc2b77ffa4ed6ca2f4e07ee95a6d6029216e582"
+    },
+    {
+      "username": "test",
+      "role": "user",
+      "salt": "fa05878fbed15c642abd54fe8964090f",
+      "hash": "53facc3bbf240f797a992352b288c69beec7abdaff9aaf1d17f674b42896148b"
+    }
+  ]
 }
