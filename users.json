@@ -17,6 +17,12 @@
       "role": "user",
       "salt": "1152e51dcf5c51b34d296249ac010f5d",
       "hash": "7574c7b6c049350c8ad55860c879cbe2f1bde635e443f05e4d6b6e20834cb86e"
+    },
+    {
+      "username": "user1",
+      "role": "user",
+      "salt": "3d8f4d9919d9db8c3186b22e9a4eb1f4",
+      "hash": "dfab1abd04d1e0fde01c987553c97d44a0eda746b7e6c2ebb4e3d0a1e9070b70"
     }
   ]
 }
